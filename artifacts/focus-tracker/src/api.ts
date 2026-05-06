@@ -8,7 +8,7 @@ export interface TodayStats {
   category: Category;
   last_screenshot: string;
   minutes_since_update: number;
-  hourly_heatmap: Array<{ hour: number; avg_score: number | null }>;
+  hourly_heatmap: Array<{ hour: number; avg_score: number | null; category: Category | null; summary: string | null }>;
   total_focused_minutes: number;
   avg_score: number;
   total_screenshots: number;
@@ -148,12 +148,19 @@ const MOCK_TODAY: TodayStats = {
   last_screenshot: "2025-05-06T15:28:00",
   minutes_since_update: 2,
   hourly_heatmap: Array.from({ length: 24 }, (_, hour) => {
-    if (hour < 8 || hour > 15) return { hour, avg_score: null };
-    const scores: Record<number, number> = {
-      8: 6.2, 9: 7.4, 10: 8.1, 11: 7.9, 12: 3.2,
-      13: 5.8, 14: 8.4, 15: 7.8,
+    if (hour < 8 || hour > 15) return { hour, avg_score: null, category: null, summary: null };
+    const data: Record<number, { avg_score: number; category: Category; summary: string }> = {
+      8:  { avg_score: 6.2, category: "code",   summary: "Started the day reviewing open PRs and triaging GitHub issues from overnight." },
+      9:  { avg_score: 7.4, category: "code",   summary: "Deep work on TypeScript refactor — extracting shared validation logic into a reusable lib module." },
+      10: { avg_score: 8.1, category: "code",   summary: "Implementing pagination and cursor-based queries for the logs API. High focus, minimal interruptions." },
+      11: { avg_score: 7.9, category: "code",   summary: "Writing unit tests for the new route handlers and fixing an edge case in the score threshold filter." },
+      12: { avg_score: 3.2, category: "social",  summary: "Lunch break — browsing Hacker News and catching up on Slack threads from the team." },
+      13: { avg_score: 5.8, category: "video",  summary: "Watching a conference talk on distributed tracing and observability patterns in microservices." },
+      14: { avg_score: 8.4, category: "code",   summary: "Building the Calendar week view — positioning segments on a time grid, grouping screenshot entries into continuous blocks." },
+      15: { avg_score: 7.8, category: "code",   summary: "Polishing the heatmap tooltip and adding summary text to each hourly cell. Wrapping up for the day." },
     };
-    return { hour, avg_score: scores[hour] ?? null };
+    const h = data[hour];
+    return { hour, avg_score: h.avg_score, category: h.category, summary: h.summary };
   }),
   total_focused_minutes: 248,
   avg_score: 7.1,
