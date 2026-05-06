@@ -1,270 +1,395 @@
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { getCalendar, getHourlyEntries, type CalendarDay, type HourlyEntry, type Category } from "@/api";
+import { getWeekLogs, type LogEntry, type Category } from "@/api";
 
-function scoreColor(score: number | null): string {
-  if (score === null) return "transparent";
+const HOUR_HEIGHT = 64;
+const START_HOUR = 7;
+const END_HOUR = 21;
+const SCREENSHOT_INTERVAL_MIN = 5;
+
+const CAT_COLORS: Record<Category, { bg: string; border: string; text: string }> = {
+  code:   { bg: "rgba(59,130,246,0.18)",  border: "#3b82f6", text: "#93c5fd" },
+  video:  { bg: "rgba(168,85,247,0.18)", border: "#a855f7", text: "#d8b4fe" },
+  social: { bg: "rgba(245,158,11,0.18)", border: "#f59e0b", text: "#fcd34d" },
+  idle:   { bg: "rgba(107,114,128,0.12)", border: "#6b7280", text: "#9ca3af" },
+};
+
+const DAY_NAMES = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+
+interface Segment {
+  start: Date;
+  end: Date;
+  category: Category;
+  avg_score: number;
+  count: number;
+  summary: string;
+}
+
+function getMonday(date: Date): Date {
+  const d = new Date(date);
+  d.setHours(0, 0, 0, 0);
+  const dow = d.getDay();
+  const diff = dow === 0 ? -6 : 1 - dow;
+  d.setDate(d.getDate() + diff);
+  return d;
+}
+
+function addDays(date: Date, n: number): Date {
+  const d = new Date(date);
+  d.setDate(d.getDate() + n);
+  return d;
+}
+
+function isoDate(date: Date): string {
+  return date.toISOString().slice(0, 10);
+}
+
+function groupIntoSegments(entries: LogEntry[]): Segment[] {
+  if (entries.length === 0) return [];
+  const sorted = [...entries].sort(
+    (a, b) => new Date(a.datetime).getTime() - new Date(b.datetime).getTime()
+  );
+  const gap = SCREENSHOT_INTERVAL_MIN * 60_000;
+  const segments: Segment[] = [];
+  let cur: Segment = {
+    start: new Date(sorted[0].datetime),
+    end: new Date(new Date(sorted[0].datetime).getTime() + gap),
+    category: sorted[0].category,
+    avg_score: sorted[0].score,
+    count: 1,
+    summary: sorted[0].summary,
+  };
+  for (let i = 1; i < sorted.length; i++) {
+    const e = sorted[i];
+    const t = new Date(e.datetime).getTime();
+    const gapMs = t - cur.end.getTime();
+    if (gapMs <= gap && e.category === cur.category) {
+      cur.end = new Date(t + gap);
+      cur.avg_score = (cur.avg_score * cur.count + e.score) / (cur.count + 1);
+      cur.count++;
+    } else {
+      segments.push(cur);
+      cur = {
+        start: new Date(e.datetime),
+        end: new Date(t + gap),
+        category: e.category,
+        avg_score: e.score,
+        count: 1,
+        summary: e.summary,
+      };
+    }
+  }
+  segments.push(cur);
+  return segments;
+}
+
+function timeToY(date: Date): number {
+  const h = date.getHours() + date.getMinutes() / 60;
+  return (h - START_HOUR) * HOUR_HEIGHT;
+}
+
+function scoreColor(score: number): string {
   if (score >= 7) return "#22c55e";
   if (score >= 4) return "#f59e0b";
   return "#ef4444";
 }
 
-function scoreTextColor(score: number): string {
-  if (score >= 7) return "text-green-400";
-  if (score >= 4) return "text-amber-400";
-  return "text-red-400";
+function formatRange(start: Date, end: Date): string {
+  const fmt = (d: Date) =>
+    d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  return `${fmt(start)} – ${fmt(end)}`;
 }
 
-function categoryBadgeClass(cat: Category): string {
-  switch (cat) {
-    case "code": return "bg-blue-500/15 text-blue-300";
-    case "video": return "bg-purple-500/15 text-purple-300";
-    case "social": return "bg-amber-500/15 text-amber-300";
-    case "idle": return "bg-zinc-500/15 text-zinc-400";
-  }
+function formatWeekLabel(monday: Date): string {
+  const sunday = addDays(monday, 6);
+  const opts: Intl.DateTimeFormatOptions = { month: "short", day: "numeric" };
+  const m = monday.toLocaleDateString([], opts);
+  const s = sunday.toLocaleDateString([], { month: "short", day: "numeric", year: "numeric" });
+  return `${m} – ${s}`;
 }
 
-const MONTH_NAMES = [
-  "January", "February", "March", "April", "May", "June",
-  "July", "August", "September", "October", "November", "December",
-];
-const DOW = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-
-function formatMonthParam(year: number, month: number): string {
-  return `${year}-${String(month + 1).padStart(2, "0")}`;
-}
-
-function HourHeatmap({
-  date,
-  onSelectHour,
-  selectedHour,
-}: {
-  date: string;
-  onSelectHour: (h: number) => void;
-  selectedHour: number | null;
-}) {
-  const hours = Array.from({ length: 24 }, (_, i) => i);
+function CurrentTimeLine() {
+  const now = new Date();
+  const y = timeToY(now);
+  if (now.getHours() < START_HOUR || now.getHours() >= END_HOUR) return null;
   return (
-    <div className="mt-4 p-4 bg-card/50 border border-card-border rounded-xl">
-      <p className="text-xs text-muted-foreground mb-3 font-medium uppercase tracking-wider">
-        Hourly breakdown — {date}
-      </p>
-      <div className="flex gap-1 items-end">
-        {hours.map((h) => (
-          <div
-            key={h}
-            onClick={() => onSelectHour(h)}
-            className={`flex flex-col items-center gap-1 flex-1 min-w-0 cursor-pointer group`}
-          >
-            <div
-              className={`w-full rounded-sm transition-all ${
-                selectedHour === h ? "ring-2 ring-primary ring-offset-1 ring-offset-background" : "hover:opacity-90"
-              }`}
-              style={{ height: 32, backgroundColor: "#1e2535" }}
-            />
-            {h % 6 === 0 && (
-              <span className="text-[10px] text-muted-foreground">
-                {h === 0 ? "12a" : h < 12 ? `${h}a` : h === 12 ? "12p" : `${h - 12}p`}
-              </span>
-            )}
-          </div>
-        ))}
-      </div>
-      <p className="text-xs text-muted-foreground mt-2">Click an hour to see entries</p>
+    <div
+      className="absolute left-0 right-0 pointer-events-none z-20 flex items-center"
+      style={{ top: y }}
+    >
+      <div className="w-2 h-2 rounded-full bg-red-500 -ml-1 shrink-0" />
+      <div className="flex-1 h-px bg-red-500 opacity-70" />
     </div>
   );
 }
 
-function HourEntries({ date, hour }: { date: string; hour: number }) {
-  const { data, isLoading } = useQuery<HourlyEntry[]>({
-    queryKey: ["hourly", date, hour],
-    queryFn: () => getHourlyEntries(date, hour),
-  });
-
-  const label = `${String(hour).padStart(2, "0")}:00 — ${String(hour + 1).padStart(2, "0")}:00`;
-
-  return (
-    <div className="mt-3 p-4 bg-card/50 border border-card-border rounded-xl">
-      <p className="text-xs text-muted-foreground mb-3 font-medium uppercase tracking-wider">{label}</p>
-      {isLoading ? (
-        <div className="text-xs text-muted-foreground">Loading…</div>
-      ) : !data || data.length === 0 ? (
-        <div className="text-xs text-muted-foreground">No entries for this hour.</div>
-      ) : (
-        <div className="space-y-2">
-          {data.map((entry) => (
-            <div key={entry.id} className="flex items-center gap-3 text-sm">
-              <span className="text-muted-foreground tabular-nums text-xs w-12 shrink-0">
-                {new Date(entry.datetime).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
-              </span>
-              <span className={`text-xs px-1.5 py-0.5 rounded font-medium shrink-0 ${categoryBadgeClass(entry.category)}`}>
-                {entry.category}
-              </span>
-              <span className={`text-xs font-semibold tabular-nums shrink-0 ${scoreTextColor(entry.score)}`}>
-                {entry.score.toFixed(1)}
-              </span>
-              <span className="text-muted-foreground text-xs truncate">{entry.summary}</span>
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  );
+interface TooltipData {
+  segment: Segment;
+  x: number;
+  y: number;
 }
 
 export default function CalendarPage() {
-  const now = new Date();
-  const [year, setYear] = useState(now.getFullYear());
-  const [month, setMonth] = useState(now.getMonth());
-  const [selectedDate, setSelectedDate] = useState<string | null>(null);
-  const [selectedHour, setSelectedHour] = useState<number | null>(null);
+  const today = new Date("2025-05-06T15:30:00");
+  const [weekStart, setWeekStart] = useState<Date>(() => getMonday(today));
+  const [tooltip, setTooltip] = useState<TooltipData | null>(null);
+  const gridRef = useRef<HTMLDivElement>(null);
 
-  const monthParam = formatMonthParam(year, month);
+  const weekStartStr = isoDate(weekStart);
 
-  const { data, isLoading } = useQuery({
-    queryKey: ["calendar", monthParam],
-    queryFn: () => getCalendar(monthParam),
+  const { data: entries = [], isLoading } = useQuery<LogEntry[]>({
+    queryKey: ["week", weekStartStr],
+    queryFn: () => getWeekLogs(weekStartStr),
   });
 
-  const prevMonth = () => {
-    if (month === 0) { setYear(y => y - 1); setMonth(11); }
-    else setMonth(m => m - 1);
-    setSelectedDate(null);
-    setSelectedHour(null);
-  };
-  const nextMonth = () => {
-    if (month === 11) { setYear(y => y + 1); setMonth(0); }
-    else setMonth(m => m + 1);
-    setSelectedDate(null);
-    setSelectedHour(null);
-  };
+  const days = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i));
+  const hours = Array.from({ length: END_HOUR - START_HOUR }, (_, i) => START_HOUR + i);
 
-  const dayMap = new Map<string, CalendarDay>();
-  data?.days.forEach((d) => dayMap.set(d.date, d));
+  const segmentsByDay = new Map<string, Segment[]>();
+  days.forEach((d) => {
+    const dateStr = isoDate(d);
+    const dayEntries = entries.filter((e) => e.datetime.startsWith(dateStr));
+    segmentsByDay.set(dateStr, groupIntoSegments(dayEntries));
+  });
 
-  const firstDow = new Date(year, month, 1).getDay();
-  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const prevWeek = () => setWeekStart((d) => addDays(d, -7));
+  const nextWeek = () => setWeekStart((d) => addDays(d, 7));
+  const goToday = () => setWeekStart(getMonday(today));
 
-  const cells: (CalendarDay | null)[] = [
-    ...Array(firstDow).fill(null),
-    ...Array.from({ length: daysInMonth }, (_, i) => {
-      const dateStr = `${year}-${String(month + 1).padStart(2, "0")}-${String(i + 1).padStart(2, "0")}`;
-      return dayMap.get(dateStr) ?? { date: dateStr, avg_score: null };
-    }),
-  ];
+  const isThisWeek = isoDate(weekStart) === isoDate(getMonday(today));
+  const todayStr = isoDate(today);
+
+  useEffect(() => {
+    const close = () => setTooltip(null);
+    window.addEventListener("click", close);
+    return () => window.removeEventListener("click", close);
+  }, []);
+
+  useEffect(() => {
+    if (gridRef.current) {
+      const scrollY = Math.max(0, (9 - START_HOUR) * HOUR_HEIGHT - 80);
+      gridRef.current.scrollTop = scrollY;
+    }
+  }, []);
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-xl font-semibold text-foreground">Calendar</h1>
+    <div className="flex flex-col h-full space-y-4" style={{ minHeight: 0 }}>
+      <div className="flex items-center justify-between shrink-0">
         <div className="flex items-center gap-3">
+          <h1 className="text-xl font-semibold text-foreground">Calendar</h1>
+          <span className="text-sm text-muted-foreground">{formatWeekLabel(weekStart)}</span>
+        </div>
+        <div className="flex items-center gap-2">
           <button
-            onClick={prevMonth}
-            className="p-1.5 rounded-md hover:bg-accent transition-colors text-muted-foreground hover:text-foreground"
+            onClick={goToday}
+            disabled={isThisWeek}
+            className="px-3 py-1.5 text-sm rounded-md border border-border text-muted-foreground hover:text-foreground hover:bg-accent transition-colors disabled:opacity-40"
           >
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-              <path d="M10 3L6 8L10 13" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-            </svg>
+            Today
           </button>
-          <span className="text-sm font-medium text-foreground min-w-[120px] text-center">
-            {MONTH_NAMES[month]} {year}
-          </span>
-          <button
-            onClick={nextMonth}
-            className="p-1.5 rounded-md hover:bg-accent transition-colors text-muted-foreground hover:text-foreground"
-          >
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-              <path d="M6 3L10 8L6 13" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-            </svg>
-          </button>
+          <div className="flex items-center border border-border rounded-md overflow-hidden">
+            <button
+              onClick={prevWeek}
+              className="px-3 py-1.5 text-muted-foreground hover:text-foreground hover:bg-accent transition-colors border-r border-border"
+            >
+              <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+                <path d="M9 2.5L5 7L9 11.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+              </svg>
+            </button>
+            <button
+              onClick={nextWeek}
+              className="px-3 py-1.5 text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
+            >
+              <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+                <path d="M5 2.5L9 7L5 11.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+              </svg>
+            </button>
+          </div>
         </div>
       </div>
 
-      <div className="bg-card border border-card-border rounded-xl p-5">
-        <div className="grid grid-cols-7 mb-2">
-          {DOW.map((d) => (
-            <div key={d} className="text-center text-xs text-muted-foreground font-medium py-1">{d}</div>
-          ))}
-        </div>
-
-        {isLoading ? (
-          <div className="h-48 flex items-center justify-center">
-            <div className="text-sm text-muted-foreground">Loading…</div>
-          </div>
-        ) : (
-          <div className="grid grid-cols-7 gap-1">
-            {cells.map((cell, idx) => {
-              if (!cell) return <div key={`empty-${idx}`} />;
-              const isSelected = selectedDate === cell.date;
-              const isToday = cell.date === new Date().toISOString().slice(0, 10);
-              return (
-                <button
-                  key={cell.date}
-                  onClick={() => {
-                    setSelectedDate(isSelected ? null : cell.date);
-                    setSelectedHour(null);
-                  }}
-                  className={`relative aspect-square rounded-lg flex flex-col items-center justify-center transition-all p-1 ${
-                    isSelected ? "ring-2 ring-primary ring-offset-1 ring-offset-background" : "hover:bg-accent/60"
+      <div className="bg-card border border-card-border rounded-xl overflow-hidden flex flex-col" style={{ maxHeight: "calc(100vh - 180px)" }}>
+        <div className="flex shrink-0 border-b border-border">
+          <div className="w-14 shrink-0" />
+          {days.map((day, i) => {
+            const dateStr = isoDate(day);
+            const isToday = dateStr === todayStr;
+            const segs = segmentsByDay.get(dateStr) ?? [];
+            const totalFocused = segs
+              .filter((s) => s.category === "code" || s.avg_score >= 6)
+              .reduce((acc, s) => acc + (s.end.getTime() - s.start.getTime()) / 60000, 0);
+            return (
+              <div
+                key={i}
+                className="flex-1 py-3 px-2 text-center border-l border-border first:border-l-0"
+              >
+                <div className={`text-xs font-medium ${isToday ? "text-muted-foreground" : "text-muted-foreground"}`}>
+                  {DAY_NAMES[i]}
+                </div>
+                <div
+                  className={`text-xl font-semibold tabular-nums mt-0.5 w-9 h-9 flex items-center justify-center rounded-full mx-auto ${
+                    isToday ? "bg-primary text-primary-foreground" : "text-foreground"
                   }`}
                 >
-                  {cell.avg_score !== null && (
+                  {day.getDate()}
+                </div>
+                {totalFocused > 0 && (
+                  <div className="text-[10px] text-muted-foreground mt-0.5">
+                    {Math.round(totalFocused)}m
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+
+        <div className="flex-1 overflow-y-auto relative" ref={gridRef}>
+          {isLoading && (
+            <div className="absolute inset-0 flex items-center justify-center bg-card/80 z-30">
+              <div className="text-sm text-muted-foreground">Loading…</div>
+            </div>
+          )}
+
+          <div className="flex" style={{ height: (END_HOUR - START_HOUR) * HOUR_HEIGHT }}>
+            <div className="w-14 shrink-0 relative">
+              {hours.map((h) => (
+                <div
+                  key={h}
+                  className="absolute right-2 text-[10px] text-muted-foreground tabular-nums"
+                  style={{ top: (h - START_HOUR) * HOUR_HEIGHT - 6 }}
+                >
+                  {h === 12 ? "12pm" : h < 12 ? `${h}am` : `${h - 12}pm`}
+                </div>
+              ))}
+            </div>
+
+            {days.map((day, di) => {
+              const dateStr = isoDate(day);
+              const segs = segmentsByDay.get(dateStr) ?? [];
+              const isToday = dateStr === todayStr;
+
+              return (
+                <div
+                  key={di}
+                  className="flex-1 border-l border-border relative"
+                  style={{ minWidth: 0 }}
+                >
+                  {hours.map((h) => (
                     <div
-                      className="absolute inset-1 rounded-md opacity-20"
-                      style={{ backgroundColor: scoreColor(cell.avg_score) }}
+                      key={h}
+                      className="absolute left-0 right-0 border-t border-border/30"
+                      style={{ top: (h - START_HOUR) * HOUR_HEIGHT, height: HOUR_HEIGHT }}
                     />
-                  )}
-                  <span
-                    className={`relative text-sm tabular-nums z-10 ${
-                      isToday ? "font-bold text-primary" : "text-foreground"
-                    }`}
-                  >
-                    {parseInt(cell.date.slice(-2))}
-                  </span>
-                  {cell.avg_score !== null && (
-                    <span
-                      className={`relative text-[9px] tabular-nums z-10 font-medium mt-0.5 ${
-                        cell.avg_score >= 7 ? "text-green-400" : cell.avg_score >= 4 ? "text-amber-400" : "text-red-400"
-                      }`}
-                    >
-                      {cell.avg_score.toFixed(1)}
-                    </span>
-                  )}
-                </button>
+                  ))}
+
+                  {isToday && <CurrentTimeLine />}
+
+                  {segs.map((seg, si) => {
+                    const top = timeToY(seg.start);
+                    const height = Math.max(
+                      (seg.end.getTime() - seg.start.getTime()) / 3_600_000 * HOUR_HEIGHT,
+                      22
+                    );
+                    const clippedTop = Math.max(top, 0);
+                    const clippedHeight = Math.min(height - (clippedTop - top), (END_HOUR - START_HOUR) * HOUR_HEIGHT - clippedTop);
+                    if (clippedHeight <= 0) return null;
+                    const colors = CAT_COLORS[seg.category];
+                    const showLabel = clippedHeight > 20;
+                    const showScore = clippedHeight > 34;
+
+                    return (
+                      <div
+                        key={si}
+                        className="absolute left-0.5 right-0.5 rounded overflow-hidden cursor-pointer transition-opacity hover:opacity-90 z-10"
+                        style={{
+                          top: clippedTop + 1,
+                          height: clippedHeight - 2,
+                          backgroundColor: colors.bg,
+                          borderLeft: `2px solid ${colors.border}`,
+                        }}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          const rect = (e.currentTarget as HTMLElement)
+                            .closest(".flex-1")!
+                            .getBoundingClientRect();
+                          setTooltip({ segment: seg, x: rect.left, y: rect.top + clippedTop });
+                        }}
+                      >
+                        {showLabel && (
+                          <div className="px-1.5 pt-0.5 leading-tight">
+                            <div className="text-[10px] font-semibold truncate" style={{ color: colors.text }}>
+                              {seg.category.charAt(0).toUpperCase() + seg.category.slice(1)}
+                            </div>
+                            {showScore && (
+                              <div
+                                className="text-[9px] font-bold tabular-nums"
+                                style={{ color: scoreColor(seg.avg_score) }}
+                              >
+                                {seg.avg_score.toFixed(1)}
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
               );
             })}
           </div>
-        )}
-
-        <div className="flex gap-4 mt-4 pt-4 border-t border-border">
-          {[
-            { label: "7–10 Focused", color: "#22c55e" },
-            { label: "4–6 Moderate", color: "#f59e0b" },
-            { label: "0–3 Distracted", color: "#ef4444" },
-            { label: "No data", color: "#1e2535", border: true },
-          ].map((item) => (
-            <div key={item.label} className="flex items-center gap-1.5">
-              <div
-                className="w-3 h-3 rounded-sm"
-                style={{ backgroundColor: item.color, border: item.border ? "1px solid #374151" : undefined }}
-              />
-              <span className="text-xs text-muted-foreground">{item.label}</span>
-            </div>
-          ))}
         </div>
       </div>
 
-      {selectedDate && (
-        <HourHeatmap
-          date={selectedDate}
-          selectedHour={selectedHour}
-          onSelectHour={(h) => setSelectedHour(selectedHour === h ? null : h)}
-        />
+      {tooltip && (
+        <div
+          className="fixed z-50 bg-popover border border-border rounded-lg shadow-xl p-3 w-64 pointer-events-none"
+          style={{
+            left: Math.min(tooltip.x + 8, window.innerWidth - 272),
+            top: Math.min(tooltip.y - 8, window.innerHeight - 180),
+          }}
+        >
+          <div className="flex items-center justify-between mb-2">
+            <span
+              className="text-xs font-semibold px-2 py-0.5 rounded"
+              style={{
+                backgroundColor: CAT_COLORS[tooltip.segment.category].bg,
+                color: CAT_COLORS[tooltip.segment.category].text,
+                border: `1px solid ${CAT_COLORS[tooltip.segment.category].border}`,
+              }}
+            >
+              {tooltip.segment.category}
+            </span>
+            <span
+              className="text-sm font-bold tabular-nums"
+              style={{ color: scoreColor(tooltip.segment.avg_score) }}
+            >
+              {tooltip.segment.avg_score.toFixed(1)} / 10
+            </span>
+          </div>
+          <div className="text-xs text-muted-foreground mb-1">
+            {formatRange(tooltip.segment.start, tooltip.segment.end)}
+            <span className="ml-2">
+              · {Math.round((tooltip.segment.end.getTime() - tooltip.segment.start.getTime()) / 60000)}m
+            </span>
+          </div>
+          <div className="text-xs text-foreground/80 mt-1.5 leading-relaxed line-clamp-3">
+            {tooltip.segment.summary}
+          </div>
+          <div className="text-[10px] text-muted-foreground mt-2">{tooltip.segment.count} screenshot{tooltip.segment.count !== 1 ? "s" : ""}</div>
+        </div>
       )}
 
-      {selectedDate && selectedHour !== null && (
-        <HourEntries date={selectedDate} hour={selectedHour} />
-      )}
+      <div className="flex items-center gap-4 shrink-0 pt-1">
+        {(["code", "video", "social", "idle"] as Category[]).map((cat) => (
+          <div key={cat} className="flex items-center gap-1.5">
+            <div
+              className="w-3 h-3 rounded-sm"
+              style={{ backgroundColor: CAT_COLORS[cat].border }}
+            />
+            <span className="text-xs text-muted-foreground capitalize">{cat}</span>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }

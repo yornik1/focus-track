@@ -110,16 +110,22 @@ function mockEntry(id: string, datetime: string, category: Category, score: numb
 }
 
 function buildMockLogs(): LogEntry[] {
-  const now = new Date("2025-05-06T15:30:00");
   const entries: LogEntry[] = [];
   let id = 1;
-  for (let day = 29; day <= 6; day++) {
-    const dateStr = `2025-05-${String(day > 30 ? day - 30 : day).padStart(2, "0")}`;
-    for (let hour = 8; hour <= 18; hour++) {
-      const count = Math.floor(Math.random() * 3) + 1;
+  const base = new Date("2025-05-06");
+  for (let daysAgo = 13; daysAgo >= 0; daysAgo--) {
+    const d = new Date(base);
+    d.setDate(d.getDate() - daysAgo);
+    const dow = d.getDay();
+    if (dow === 0 || dow === 6) continue;
+    const dateStr = d.toISOString().slice(0, 10);
+    const startHour = 8 + Math.floor(Math.random() * 2);
+    const endHour = daysAgo === 0 ? 15 : 17 + Math.floor(Math.random() * 2);
+    for (let hour = startHour; hour <= endHour; hour++) {
+      const count = Math.floor(Math.random() * 4) + 2;
       for (let m = 0; m < count; m++) {
-        const minutes = Math.floor(m * (60 / count));
-        const dt = `${dateStr}T${String(hour).padStart(2, "0")}:${String(minutes).padStart(2, "0")}:00`;
+        const minutes = Math.floor((60 / count) * m + Math.random() * 5);
+        const dt = `${dateStr}T${String(hour).padStart(2, "0")}:${String(Math.min(minutes, 59)).padStart(2, "0")}:00`;
         const cats: Category[] = ["code", "code", "code", "video", "social", "idle"];
         const cat = cats[Math.floor(Math.random() * cats.length)];
         const score =
@@ -203,6 +209,28 @@ export async function getTodayStats(): Promise<TodayStats> {
 export async function getCalendar(month: string): Promise<CalendarResponse> {
   if (USE_MOCK) return buildCalendarMock(month);
   return apiFetch<CalendarResponse>(`/api/stats/calendar?month=${month}`);
+}
+
+export async function getWeekLogs(weekStart: string): Promise<LogEntry[]> {
+  if (USE_MOCK) {
+    const start = new Date(weekStart);
+    const end = new Date(start);
+    end.setDate(end.getDate() + 7);
+    const startStr = start.toISOString().slice(0, 10);
+    const endStr = end.toISOString().slice(0, 10);
+    return MOCK_LOGS.filter((e) => {
+      const d = e.datetime.slice(0, 10);
+      return d >= startStr && d < endStr;
+    });
+  }
+  const end = new Date(weekStart);
+  end.setDate(end.getDate() + 7);
+  const params = new URLSearchParams({
+    date_from: weekStart,
+    date_to: end.toISOString().slice(0, 10),
+  });
+  const res = await apiFetch<LogsResponse>(`/api/logs?${params}`);
+  return res.entries;
 }
 
 export async function getHourlyEntries(date: string, hour: number): Promise<HourlyEntry[]> {
