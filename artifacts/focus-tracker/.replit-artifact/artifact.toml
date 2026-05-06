@@ -1,0 +1,31 @@
+kind = "web"
+previewPath = "/"
+title = "Focus Tracker"
+version = "1.0.0"
+id = "artifacts/focus-tracker"
+router = "path"
+
+[[integratedSkills]]
+name = "react-vite"
+version = "1.0.0"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 19264
+
+[services.development]
+run = "pnpm --filter @workspace/focus-tracker run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/focus-tracker", "run", "build" ]
+publicDir = "artifacts/focus-tracker/dist/public"
+serve = "static"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "19264"
+BASE_PATH = "/"
