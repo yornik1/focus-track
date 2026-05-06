@@ -1,5 +1,5 @@
 const USE_MOCK = false;
-const BASE_URL = "http://localhost:5000";
+const BASE_URL = "";
 
 export type Category = "code" | "video" | "social" | "idle";
 

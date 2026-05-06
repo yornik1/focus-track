@@ -1,6 +1,14 @@
 import { Router } from "express";
-import { db, focusLogTable } from "@workspace/db";
+import {
+  db,
+  focusLogTable,
+  readAppSettings,
+  getDefaultAppSettings,
+  writeAppSettings,
+  normalizeSettingsPayload,
+} from "@workspace/db";
 import { eq, gte, lte, and, sql, desc } from "drizzle-orm";
+import { testLlmConnection } from "../llm-connection-test";
 
 const router = Router();
 
@@ -178,22 +186,60 @@ router.patch("/logs/:id", async (req, res) => {
   res.json({ success: true });
 });
 
-// GET /api/settings
-router.get("/settings", async (req, res) => {
-  // TODO: читать из конфига или env
+// GET /api/stats/streak
+router.get("/stats/streak", async (req, res) => {
+  // TODO: реальный подсчёт streak
   res.json({
-    provider: "gemini",
-    token: "",
-    screenshot_interval: 2,
-    idle_threshold: 60,
-    focused_score_threshold: 7,
+    streak: 0,
+    best_streak: 0,
+    last7days: [],
   });
 });
 
-// POST /api/settings
-router.post("/settings", async (req, res) => {
-  // TODO: сохранять в конфиг, обновлять plist, перезагружать LaunchAgent
+// DELETE /api/logs/:id
+router.delete("/logs/:id", async (req, res) => {
+  const { id } = req.params;
+  await db.delete(focusLogTable).where(eq(focusLogTable.id, Number(id)));
   res.json({ success: true });
+});
+
+// POST /api/pause
+router.post("/pause", async (req, res) => {
+  // TODO: реальная пауза watcher через LaunchAgent
+  res.json({ success: true });
+});
+
+// GET /api/settings
+router.get("/settings", (req, res) => {
+  const stored = readAppSettings();
+  res.json(stored ?? getDefaultAppSettings());
+});
+
+// POST /api/settings
+router.post("/settings", (req, res) => {
+  try {
+    const settings = normalizeSettingsPayload(req.body);
+    writeAppSettings(settings);
+    res.json(settings);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Invalid settings";
+    res.status(400).json({ success: false, message });
+  }
+});
+
+// POST /api/settings/test
+router.post("/settings/test", async (req, res) => {
+  const { provider, token } = req.body;
+  const tokenStr = token != null ? String(token).trim() : "";
+  if (!provider || !tokenStr) {
+    return res.status(400).json({ success: false, message: "provider and token are required" });
+  }
+  const p = String(provider).toLowerCase();
+  if (p !== "gemini" && p !== "ollama") {
+    return res.status(400).json({ success: false, message: "provider must be gemini or ollama" });
+  }
+  const result = await testLlmConnection(p, tokenStr);
+  res.status(200).json(result);
 });
 
 // GET /api/status

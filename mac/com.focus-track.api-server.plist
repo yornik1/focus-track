@@ -11,7 +11,7 @@
 		<key>DATABASE_PATH</key>
 		<string>/path/to/focus-track/focus.db</string>
 		<key>PORT</key>
-		<string>5000</string>
+		<string>5001</string>
 	</dict>
 	<key>ProgramArguments</key>
 	<array>

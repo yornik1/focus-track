@@ -1,12 +1,25 @@
 #!/usr/bin/env node
 import "dotenv/config";
 import { readFileSync } from "fs";
-import { db, focusLogTable } from "@workspace/db";
+import { db, focusLogTable, readAppSettings } from "@workspace/db";
 import { GeminiProvider, OllamaProvider } from "@workspace/llm";
 
-const PROVIDER = process.env.FOCUS_PROVIDER || "gemini";
-const GEMINI_API_KEY = process.env.GEMINI_API_KEY || "";
-const OLLAMA_HOST = process.env.OLLAMA_HOST || "http://localhost:11434";
+const stored = readAppSettings();
+const fromFile = stored != null;
+
+const PROVIDER = fromFile
+  ? stored.provider
+  : ((process.env.FOCUS_PROVIDER || "gemini") as "gemini" | "ollama");
+const trimmedToken = fromFile ? stored.token.trim() : "";
+
+const GEMINI_API_KEY =
+  PROVIDER === "gemini"
+    ? trimmedToken || (process.env.GEMINI_API_KEY ?? "")
+    : (process.env.GEMINI_API_KEY ?? "");
+const OLLAMA_HOST =
+  PROVIDER === "ollama"
+    ? trimmedToken || (process.env.OLLAMA_HOST ?? "http://localhost:11434")
+    : (process.env.OLLAMA_HOST ?? "http://localhost:11434");
 
 async function analyzeScreenshot(imagePath: string) {
   // Читаем изображение и конвертируем в base64

@@ -137,6 +137,9 @@ function Sparkline({ days }: { days: StreakData["last7days"] }) {
   const W = 160;
   const H = 44;
   const PAD = 4;
+  if (days.length === 0) {
+    return <svg width={W} height={H} />;
+  }
   const scores = days.map((d) => d.avg_score ?? 0);
   const min = 0;
   const max = 10;

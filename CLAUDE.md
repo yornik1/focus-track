@@ -8,7 +8,7 @@ Focus-track is a productivity monitoring system that captures periodic screensho
 
 **Stack:**
 - macOS: LaunchAgent + bash scripts for screenshot capture
-- Backend: Express API (port 5000) with SQLite database
+- Backend: Express API (port 5001) with SQLite database
 - Frontend: React + TypeScript + Tailwind (Vite dev server)
 - LLM: Google Gemini Flash (default) or Ollama (local)
 - Database: SQLite with Drizzle ORM
@@ -25,8 +25,8 @@ pnpm install
 # Build API server
 pnpm --filter @workspace/api-server run build
 
-# Start API server (port 5000)
-PORT=5000 pnpm --filter @workspace/api-server run start
+# Start API server (port 5001)
+PORT=5001 pnpm --filter @workspace/api-server run start
 
 # Start frontend dev server (port 5173)
 pnpm --filter @workspace/focus-tracker run dev
@@ -85,7 +85,7 @@ Table `focus_log`:
 - `GEMINI_API_KEY` - Google AI API key
 - `OLLAMA_HOST` - Ollama server URL (default: http://localhost:11434)
 - `DATABASE_PATH` - path to focus.db (default: ./focus.db)
-- `PORT` - API server port (default: 5000)
+- `PORT` - API server port (default: 5001)
 
 ## Code Style
 

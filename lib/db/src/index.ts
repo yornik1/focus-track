@@ -9,3 +9,4 @@ const sqlite = new Database(dbPath);
 export const db = drizzle(sqlite, { schema });
 
 export * from "./schema";
+export * from "./app-settings";
