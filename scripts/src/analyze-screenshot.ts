@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import "dotenv/config";
 import { readFileSync } from "fs";
 import { db, focusLogTable } from "@workspace/db";
 import { GeminiProvider, OllamaProvider } from "@workspace/llm";

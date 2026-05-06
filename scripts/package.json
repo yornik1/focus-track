@@ -10,7 +10,8 @@
   },
   "dependencies": {
     "@workspace/db": "workspace:*",
-    "@workspace/llm": "workspace:*"
+    "@workspace/llm": "workspace:*",
+    "dotenv": "^17.4.2"
   },
   "devDependencies": {
     "@types/node": "catalog:",
