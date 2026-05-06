@@ -36,11 +36,10 @@ tail -f /tmp/focus-track-api.err.log
 ## 4. Open Dashboard
 
 ```bash
-cd artifacts/focus-tracker
-pnpm run dev
+pnpm -w run dev
 ```
 
-Open http://localhost:5173 in browser.
+Open http://localhost:5001 in browser. API and frontend served from one process with HMR.
 
 ## Uninstall
 

@@ -5,6 +5,7 @@
   "license": "MIT",
   "scripts": {
     "preinstall": "sh -c 'rm -f package-lock.json yarn.lock; case \"$npm_config_user_agent\" in pnpm/*) ;; *) echo \"Use pnpm instead\" >&2; exit 1 ;; esac'",
+    "dev": "cd artifacts/api-server && pnpm run dev",
     "test": "node --test test/**/*.test.mjs",
     "build": "pnpm run typecheck && pnpm -r --if-present run build",
     "typecheck:libs": "tsc --build",
@@ -12,6 +13,9 @@
   },
   "engines": {
     "node": ">=20"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": ["better-sqlite3"]
   },
   "devDependencies": {
     "@google/generative-ai": "^0.21.0",

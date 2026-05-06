@@ -22,14 +22,16 @@ Quick start:
 # Install dependencies
 pnpm install
 
-# Build API server
-pnpm --filter @workspace/api-server run build
+# Start dev server (API + frontend with HMR, port 5001)
+pnpm -w run dev
+```
 
-# Start API server (port 5001)
+Open http://localhost:5001 — single process serves both API and frontend.
+
+Production build:
+```bash
+pnpm run build
 PORT=5001 pnpm --filter @workspace/api-server run start
-
-# Start frontend dev server (port 5173)
-pnpm --filter @workspace/focus-tracker run dev
 ```
 
 ## Testing
@@ -85,7 +87,7 @@ Table `focus_log`:
 - `GEMINI_API_KEY` - Google AI API key
 - `OLLAMA_HOST` - Ollama server URL (default: http://localhost:11434)
 - `DATABASE_PATH` - path to focus.db (default: ./focus.db)
-- `PORT` - API server port (default: 5001)
+- `PORT` - server port (default: 5001)
 
 ## Code Style
 

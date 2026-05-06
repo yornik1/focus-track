@@ -71,6 +71,7 @@ autoInstallPeers: false
 onlyBuiltDependencies:
   - '@swc/core'
   - '@tailwindcss/oxide'
+  - better-sqlite3
   - esbuild
   - lightningcss
   - msw
