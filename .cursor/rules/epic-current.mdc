@@ -1,0 +1,10 @@
+---
+description: Текущий проект и процесс задач
+globs:
+  - "**/*"
+alwaysApply: true
+---
+
+# MVP — focus-tracker
+
+Задача: https://www.notion.so/Focus-Tracker-v2-AI-3587b5e2ccce81448af4c3cb738e0ee9

@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>Label</key>
+	<string>com.focus-track.screenshot</string>
+	<key>EnvironmentVariables</key>
+	<dict>
+		<key>FOCUS_TRACK_ROOT</key>
+		<string>/path/to/focus-track</string>
+		<key>FOCUS_TRACK_IDLE_SEC</key>
+		<string>60</string>
+		<key>FOCUS_TRACK_TICK_MIN_SEC</key>
+		<string>120</string>
+		<key>FOCUS_TRACK_TICK_MAX_SEC</key>
+		<string>600</string>
+	</dict>
+	<key>ProgramArguments</key>
+	<array>
+		<string>/bin/bash</string>
+		<string>-lc</string>
+		<string>exec "$FOCUS_TRACK_ROOT/mac/capture-random-loop.sh"</string>
+	</array>
+	<key>RunAtLoad</key>
+	<true/>
+	<key>KeepAlive</key>
+	<true/>
+	<key>StandardOutPath</key>
+	<string>/tmp/focus-track-screenshot.out.log</string>
+	<key>StandardErrorPath</key>
+	<string>/tmp/focus-track-screenshot.err.log</string>
+</dict>
+</plist>
