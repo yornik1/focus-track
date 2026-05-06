@@ -208,6 +208,31 @@ async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
   return res.json();
 }
 
+export interface StreakData {
+  streak: number;
+  best_streak: number;
+  last7days: Array<{ date: string; avg_score: number | null; is_weekend: boolean }>;
+}
+
+const MOCK_STREAK: StreakData = {
+  streak: 6,
+  best_streak: 12,
+  last7days: [
+    { date: "2025-04-28", avg_score: 7.3, is_weekend: false },
+    { date: "2025-04-29", avg_score: 8.0, is_weekend: false },
+    { date: "2025-04-30", avg_score: 5.2, is_weekend: false },
+    { date: "2025-05-01", avg_score: 7.1, is_weekend: false },
+    { date: "2025-05-02", avg_score: 6.5, is_weekend: false },
+    { date: "2025-05-05", avg_score: 7.2, is_weekend: false },
+    { date: "2025-05-06", avg_score: 7.8, is_weekend: false },
+  ],
+};
+
+export async function getStreak(): Promise<StreakData> {
+  if (USE_MOCK) return { ...MOCK_STREAK };
+  return apiFetch<StreakData>("/api/stats/streak");
+}
+
 export async function getTodayStats(): Promise<TodayStats> {
   if (USE_MOCK) return { ...MOCK_TODAY };
   return apiFetch<TodayStats>("/api/stats/today");
