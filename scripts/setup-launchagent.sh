@@ -9,7 +9,8 @@ PLIST_DST="$HOME/Library/LaunchAgents/com.focus-track.screenshot.plist"
 
 # Читаем GEMINI_API_KEY из .env если есть
 if [ -f "$REPO_ROOT/.env" ]; then
-  source "$REPO_ROOT/.env"
+  GEMINI_API_KEY=$(grep '^GEMINI_API_KEY=' "$REPO_ROOT/.env" | cut -d= -f2- | tr -d '"' | tr -d "'")
+  export GEMINI_API_KEY
 fi
 
 # Проверяем что ключ есть

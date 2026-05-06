@@ -226,6 +226,8 @@ router.get("/stats/streak", async (req, res) => {
     const dow = d.getDay();
     if (dow === 0 || dow === 6) continue; // пропускаем выходные
     const dateStr = d.toISOString().slice(0, 10);
+    // Сегодня ещё нет данных — пропускаем, не ломаем streak
+    if (i === 0 && !byDate.has(dateStr)) continue;
     if (focusedDates.has(dateStr)) {
       streak++;
     } else {
@@ -298,9 +300,13 @@ router.delete("/logs/:id", async (req, res) => {
 
 // POST /api/pause
 router.post("/pause", async (req, res) => {
-  const { duration } = req.body; // минуты или "evening"
-  let pauseUntil: number;
+  const { duration } = req.body;
 
+  if (duration !== "evening" && (typeof duration !== "number" || duration <= 0)) {
+    return res.status(400).json({ success: false, message: "duration must be positive number or 'evening'" });
+  }
+
+  let pauseUntil: number;
   if (duration === "evening") {
     const end = new Date();
     end.setHours(23, 59, 59);
@@ -312,7 +318,7 @@ router.post("/pause", async (req, res) => {
   const pauseFile = path.join(os.homedir(), ".focus-track-pause");
   fs.writeFileSync(pauseFile, String(pauseUntil));
 
-  res.json({
+  return res.json({
     success: true,
     paused_until: new Date(pauseUntil * 1000).toISOString(),
   });

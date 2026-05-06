@@ -327,15 +327,143 @@ find "$HOME/Library/Application Support/focus-track/captures" -name "*.jpg" -mti
 
 ---
 
+### Шаг 10: Фиксы из код-ревью
+
+#### 10.1 Streak — не обнулять в начале дня
+
+Файл: `artifacts/api-server/src/routes/focus.ts`, блок подсчёта текущего streak.
+
+**Проблема:** Если сегодня утро и записей ещё нет — `focusedDates.has(today)` = false → streak обнуляется. Пользователь видит streak 0 до первого скрина дня.
+
+**Фикс:**
+```typescript
+for (let i = 0; i < 90; i++) {
+  const d = new Date(today);
+  d.setDate(d.getDate() - i);
+  const dow = d.getDay();
+  if (dow === 0 || dow === 6) continue;
+  const dateStr = d.toISOString().slice(0, 10);
+  // Сегодня ещё нет данных — пропускаем, не ломаем streak
+  if (i === 0 && !byDate.has(dateStr)) continue;
+  if (focusedDates.has(dateStr)) {
+    streak++;
+  } else {
+    break;
+  }
+}
+```
+
+---
+
+#### 10.2 POST /api/pause — валидация duration
+
+Файл: `artifacts/api-server/src/routes/focus.ts`, endpoint POST /api/pause.
+
+**Проблема:** Если `duration` не число и не `"evening"` — запишется NaN в pause-файл.
+
+**Фикс:**
+```typescript
+router.post("/pause", async (req, res) => {
+  const { duration } = req.body;
+
+  if (duration !== "evening" && (typeof duration !== "number" || duration <= 0)) {
+    return res.status(400).json({ success: false, message: "duration must be positive number or 'evening'" });
+  }
+
+  let pauseUntil: number;
+  if (duration === "evening") {
+    const end = new Date();
+    end.setHours(23, 59, 59);
+    pauseUntil = Math.floor(end.getTime() / 1000);
+  } else {
+    pauseUntil = Math.floor(Date.now() / 1000) + duration * 60;
+  }
+
+  const pauseFile = path.join(os.homedir(), ".focus-track-pause");
+  fs.writeFileSync(pauseFile, String(pauseUntil));
+  res.json({ success: true, paused_until: new Date(pauseUntil * 1000).toISOString() });
+});
+```
+
+---
+
+#### 10.3 sips — одна команда вместо двух проходов
+
+Файл: `mac/capture-if-active.sh`, блок resize + compress.
+
+**Проблема:** Два вызова sips (resize, потом formatOptions) — если второй молча падёт (`|| true`), все скрины будут 1-2 MB навсегда и никто не узнает.
+
+**Фикс — один вызов sips с resize + quality:**
+```bash
+# Было (два прохода):
+# /usr/bin/sips -Z 1280 "${tmp}" --out "${final}"
+# /usr/bin/sips -s formatOptions 40 "${final}" --out "${final}.tmp" && mv ...
+
+# Стало (один проход — resize + quality):
+/usr/bin/sips -Z 1280 -s formatOptions 40 "${tmp}" --out "${final}" >/dev/null 2>&1
+
+if [[ $? -ne 0 ]]; then
+  # fallback: хотя бы просто переместить
+  /bin/mv "${tmp}" "${final}"
+else
+  /bin/rm -f "${tmp}"
+fi
+```
+
+Преимущества:
+- Нет промежуточного файла
+- Нет `|| true` который глотает ошибку сжатия
+- Если sips упал — fallback на оригинал (не теряем скрин), но можно залогировать
+
+---
+
+#### 10.4 setup-launchagent.sh — не sourсить .env целиком
+
+Файл: `scripts/setup-launchagent.sh`.
+
+**Проблема:** `source .env` выполнит любые команды в файле.
+
+**Фикс:**
+```bash
+# Было:
+# source "$REPO_ROOT/.env"
+
+# Стало:
+if [ -f "$REPO_ROOT/.env" ]; then
+  GEMINI_API_KEY=$(grep '^GEMINI_API_KEY=' "$REPO_ROOT/.env" | cut -d= -f2- | tr -d '"' | tr -d "'")
+  export GEMINI_API_KEY
+fi
+```
+
+---
+
+#### 10.5 Cleanup — не запускать find на каждом скрине
+
+Файл: `mac/capture-if-active.sh`, строка с `find ... -delete`.
+
+**Проблема:** `find` выполняется каждые 2-10 минут, хотя достаточно раз в день.
+
+**Фикс — запускать cleanup только раз в день:**
+```bash
+CLEANUP_MARKER="/tmp/focus-track-cleanup-$(date +%Y%m%d)"
+if [[ ! -f "${CLEANUP_MARKER}" ]]; then
+  find "${out_dir}" -name "*.jpg" -mtime +7 -delete 2>/dev/null || true
+  touch "${CLEANUP_MARKER}"
+fi
+```
+
+---
+
 ## Порядок для модели-исполнителя
 
-1. **Сначала** — исправить idle-логику в `capture-if-active.sh` (Шаг 7) — сейчас она инвертирована
-2. **Потом** — сжатие скриншотов (Шаг 6) — скомпилировать Swift-утилиту или настроить sips
-3. **Потом** — ручной тест (Шаг 5), чтобы убедиться что цепочка работает с новым сжатием
-4. **Потом** — реализация streak API (Шаг 3)
-5. **Потом** — реализация pause (Шаг 4)
-6. **Потом** — скрипт setup (Шаг 1)
-7. **Последним** — загрузка LaunchAgent и проверка автозапуска
+1. **Сначала** — фиксы из ревью (Шаг 10) — быстрые правки, предотвращают баги
+2. **Потом** — исправить idle-логику в `capture-if-active.sh` (Шаг 7) — сейчас инвертирована
+3. **Потом** — сжатие скриншотов (Шаг 6) — скомпилировать Swift-утилиту или настроить sips
+4. **Потом** — ручной тест (Шаг 5), чтобы убедиться что цепочка работает с новым сжатием
+5. **Потом** — реализация streak API (Шаг 3)
+6. **Потом** — реализация pause (Шаг 4)
+7. **Потом** — скрипт setup (Шаг 1)
+8. **Последним** — загрузка LaunchAgent и проверка автозапуска
 
 ## Критические зависимости
 
