@@ -42,63 +42,79 @@ function formatDuration(minutes: number): string {
 
 function HourlyHeatmap({ data }: { data: TodayStats["hourly_heatmap"] }) {
   const [hovered, setHovered] = useState<number | null>(null);
-
   const hoveredCell = hovered !== null ? data.find((d) => d.hour === hovered) ?? null : null;
 
   return (
     <div>
-      <div className="flex gap-1 items-end">
-        {data.map(({ hour, avg_score }) => (
-          <div key={hour} className="flex flex-col items-center gap-1 flex-1 min-w-0">
+      <div className="relative">
+        <div className="flex gap-1">
+          {data.map(({ hour, avg_score }) => (
             <div
-              className="relative w-full rounded-sm transition-all cursor-default"
-              style={{
-                height: 36,
-                backgroundColor: avg_score !== null ? scoreColor(avg_score) : "#1e2535",
-                opacity: hovered === hour ? 1 : avg_score !== null ? 0.85 + (avg_score / 10) * 0.15 : 1,
-                outline: hovered === hour && avg_score !== null ? `2px solid ${scoreColor(avg_score)}` : "none",
-                outlineOffset: 1,
-              }}
+              key={hour}
+              className="flex-1 min-w-0 relative"
               onMouseEnter={() => setHovered(hour)}
               onMouseLeave={() => setHovered(null)}
-            />
-            {(hour % 4 === 0) && (
-              <span className="text-[10px] text-muted-foreground">
-                {hour === 0 ? "12a" : hour < 12 ? `${hour}a` : hour === 12 ? "12p" : `${hour - 12}p`}
-              </span>
-            )}
-          </div>
-        ))}
-      </div>
+            >
+              <div
+                className="w-full rounded-sm transition-colors"
+                style={{
+                  height: 36,
+                  backgroundColor: avg_score !== null ? scoreColor(avg_score) : "#1e2535",
+                  opacity: hovered === hour ? 1 : avg_score !== null ? 0.82 + (avg_score / 10) * 0.18 : 1,
+                  outline: hovered === hour && avg_score !== null ? `2px solid ${scoreColor(avg_score)}` : "none",
+                  outlineOffset: 2,
+                }}
+              />
 
-      {hoveredCell && hoveredCell.avg_score !== null && (
-        <div className="mt-3 bg-card/80 border border-border rounded-lg p-3 space-y-2">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <span className="text-sm font-semibold text-foreground tabular-nums">
-                {String(hoveredCell.hour).padStart(2, "0")}:00 – {String(hoveredCell.hour + 1).padStart(2, "0")}:00
-              </span>
-              {hoveredCell.category && (
-                <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${categoryBadgeClass(hoveredCell.category)}`}>
-                  {categoryLabel(hoveredCell.category)}
+              {hovered === hour && hoveredCell && hoveredCell.avg_score !== null && (
+                <div
+                  className="absolute bottom-[calc(100%+8px)] z-30 w-64 bg-popover border border-border rounded-lg shadow-xl p-3 space-y-2 pointer-events-none"
+                  style={{
+                    left: "50%",
+                    transform: `translateX(${
+                      hour < 4 ? "0%" : hour > 19 ? "-100%" : "-50%"
+                    })`,
+                  }}
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <span className="text-xs font-semibold text-foreground tabular-nums shrink-0">
+                        {String(hoveredCell.hour).padStart(2, "0")}:00–{String(hoveredCell.hour + 1).padStart(2, "0")}:00
+                      </span>
+                      {hoveredCell.category && (
+                        <span className={`text-xs px-1.5 py-0.5 rounded font-medium shrink-0 ${categoryBadgeClass(hoveredCell.category)}`}>
+                          {categoryLabel(hoveredCell.category)}
+                        </span>
+                      )}
+                    </div>
+                    <span className={`text-sm font-bold tabular-nums shrink-0 ${scoreTextColor(hoveredCell.avg_score)}`}>
+                      {hoveredCell.avg_score.toFixed(1)}
+                    </span>
+                  </div>
+                  {hoveredCell.summary && (
+                    <p className="text-xs text-muted-foreground leading-relaxed">
+                      {hoveredCell.summary}
+                    </p>
+                  )}
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+
+        <div className="flex gap-1 mt-1">
+          {data.map(({ hour }) => (
+            <div key={hour} className="flex-1 min-w-0 text-center">
+              {hour % 6 === 0 && (
+                <span className="text-[10px] text-muted-foreground tabular-nums">
+                  {String(hour).padStart(2, "0")}
                 </span>
               )}
             </div>
-            <span className={`text-base font-bold tabular-nums ${scoreTextColor(hoveredCell.avg_score)}`}>
-              {hoveredCell.avg_score.toFixed(1)} / 10
-            </span>
-          </div>
-          {hoveredCell.summary && (
-            <p className="text-sm text-muted-foreground leading-relaxed">
-              {hoveredCell.summary}
-            </p>
-          )}
+          ))}
         </div>
-      )}
+      </div>
 
-      {!hoveredCell && (
-        <p className="mt-3 text-xs text-muted-foreground/50">Hover over a cell to see details</p>
-      )}
       <div className="flex gap-3 mt-3 items-center">
         <span className="text-xs text-muted-foreground">Score</span>
         {[
