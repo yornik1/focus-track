@@ -653,6 +653,13 @@ importers:
         version: 5.9.3
 
   scripts:
+    dependencies:
+      '@workspace/db':
+        specifier: workspace:*
+        version: link:../lib/db
+      '@workspace/llm':
+        specifier: workspace:*
+        version: link:../lib/llm
     devDependencies:
       '@types/node':
         specifier: 'catalog:'

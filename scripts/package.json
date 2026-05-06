@@ -5,7 +5,12 @@
   "type": "module",
   "scripts": {
     "hello": "tsx ./src/hello.ts",
+    "analyze": "tsx ./src/analyze-screenshot.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@workspace/db": "workspace:*",
+    "@workspace/llm": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "catalog:",

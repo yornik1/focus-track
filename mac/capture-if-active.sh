@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
-# Периодический снимок экрана: пропуск при простое, JPEG, уменьшение длинной стороны до ~1280px.
+# Периодический снимок экрана: пропуск при простое, JPEG, уменьшение длинной стороны до ~1280px, LLM-анализ.
 set -euo pipefail
 
 # Порог простоя (сек): при меньшем значении скрин не делаем.
 : "${FOCUS_TRACK_IDLE_SEC:=60}"
+: "${FOCUS_TRACK_ROOT:=$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")/.." && pwd)}"
 
 idle_line=$(/usr/sbin/ioreg -c IOHIDSystem -r -k HIDIdleTime 2>/dev/null | /usr/bin/grep HIDIdleTime | /usr/bin/head -1 || true)
 idle_ns="${idle_line##*= }"
@@ -29,3 +30,8 @@ if ! /usr/bin/sips -Z 1280 "${tmp}" --out "${final}" >/dev/null 2>&1; then
 else
   /bin/rm -f "${tmp}"
 fi
+
+# Анализ через LLM и запись в БД
+cd "${FOCUS_TRACK_ROOT}"
+pnpm --filter @workspace/scripts run analyze "${final}" >/dev/null 2>&1 || true
+
