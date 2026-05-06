@@ -7,18 +7,15 @@ REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 PLIST_SRC="$REPO_ROOT/mac/com.focus-track.screenshot.plist"
 PLIST_DST="$HOME/Library/LaunchAgents/com.focus-track.screenshot.plist"
 
-# Читаем GEMINI_API_KEY из .env если есть
+# Читаем GEMINI_API_KEY из .env если есть (опционально — ключ можно настроить через дашборд)
 if [ -f "$REPO_ROOT/.env" ]; then
   GEMINI_API_KEY=$(grep '^GEMINI_API_KEY=' "$REPO_ROOT/.env" | cut -d= -f2- | tr -d '"' | tr -d "'")
   export GEMINI_API_KEY
 fi
 
-# Проверяем что ключ есть
 if [ -z "${GEMINI_API_KEY:-}" ]; then
-  echo "⚠️  GEMINI_API_KEY не найден в .env"
-  echo "   Добавьте GEMINI_API_KEY=your-key в $REPO_ROOT/.env"
-  echo "   Или установите Ollama и измените FOCUS_PROVIDER=ollama"
-  exit 1
+  echo "⚠️  GEMINI_API_KEY не найден в .env (опционально)"
+  echo "   Можно настроить позже через дашборд: Settings → Test connection"
 fi
 
 # Генерируем plist с реальными путями
@@ -33,9 +30,11 @@ launchctl unload "$PLIST_DST" 2>/dev/null || true
 # Загружаем
 launchctl load "$PLIST_DST"
 
+# Создаём data/logs если нет
+mkdir -p "$REPO_ROOT/data/logs"
+
 echo "✓ LaunchAgent установлен: $PLIST_DST"
-echo "  Логи: /tmp/focus-track-screenshot.out.log"
-echo "  Ошибки: /tmp/focus-track-screenshot.err.log"
+echo "  Логи: $REPO_ROOT/data/logs/"
 echo ""
 echo "⚠️  Важно: дайте разрешение Screen Recording для Terminal/iTerm:"
 echo "   System Settings → Privacy & Security → Screen Recording"

@@ -32,8 +32,8 @@
 	<key>KeepAlive</key>
 	<true/>
 	<key>StandardOutPath</key>
-	<string>/tmp/focus-track-screenshot.out.log</string>
+	<string>/path/to/focus-track/data/logs/launchagent.out.log</string>
 	<key>StandardErrorPath</key>
-	<string>/tmp/focus-track-screenshot.err.log</string>
+	<string>/path/to/focus-track/data/logs/launchagent.err.log</string>
 </dict>
 </plist>

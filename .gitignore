@@ -185,5 +185,4 @@ Thumbs.db
 *.db-shm
 *.db-wal
 focus-app-settings.json
-captures/
-screenshots/
+data/

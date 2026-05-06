@@ -11,7 +11,6 @@ import { eq, gte, lte, and, sql, desc } from "drizzle-orm";
 import { testLlmConnection } from "../llm-connection-test";
 import * as fs from "fs";
 import * as path from "path";
-import * as os from "os";
 
 const router = Router();
 
@@ -315,7 +314,9 @@ router.post("/pause", async (req, res) => {
     pauseUntil = Math.floor(Date.now() / 1000) + duration * 60;
   }
 
-  const pauseFile = path.join(os.homedir(), ".focus-track-pause");
+  const dataDir = path.join(process.cwd(), "data");
+  if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir, { recursive: true });
+  const pauseFile = path.join(dataDir, "pause");
   fs.writeFileSync(pauseFile, String(pauseUntil));
 
   return res.json({
