@@ -222,7 +222,88 @@ open http://localhost:5001
 
 ---
 
-### Шаг 6: Разрешение Screen Recording
+### Шаг 6: Агрессивное сжатие скриншотов (килобайты вместо мегабайтов)
+
+**Цель:** LLM-анализ не требует высокого разрешения — 768px и quality 0.5-0.6 достаточно. Это экономит трафик к API и уменьшает latency.
+
+**Референс:** `~/focus-tracker/bin/focus-capture.swift` — Swift-утилита через ScreenCaptureKit, рендерит сразу в нужный размер.
+
+**Ключевое решение:** 1280px + quality 0.4 (~150-350 KB). Нужно именно 1280, не 768 — LLM должна различать контент (мемы vs статья в Telegram, Reddit vs документация в браузере), а не просто приложение.
+
+**Два варианта:**
+
+#### Вариант A: Скомпилировать Swift-утилиту (рекомендуется)
+
+Скопировать `focus-capture.swift` в `mac/bin/`, поменять параметры и скомпилировать:
+```bash
+swiftc -O -o mac/bin/focus-capture mac/bin/focus-capture.swift \
+  -framework Cocoa -framework ScreenCaptureKit
+```
+
+В Swift-коде изменить:
+- `maxWidth` по умолчанию: `768` → `1280`
+- `compressionFactor`: `0.6` → `0.4`
+
+Использование в `capture-if-active.sh`:
+```bash
+CAPTURE_BIN="${FOCUS_TRACK_ROOT}/mac/bin/focus-capture"
+"$CAPTURE_BIN" "$tmp" "1280"
+```
+
+Преимущества:
+- Скрин сразу в нужном разрешении (не делает full-res → resize)
+- Один проход — capture + resize + compress
+- ScreenCaptureKit (не `screencapture`) — меньше проблем с permissions на macOS 14+
+
+#### Вариант B: sips (если Swift не хочется)
+
+Заменить в `capture-if-active.sh`:
+```bash
+# Было: sips -Z 1280 (без пережатия quality)
+# Стало: sips -Z 1280 + quality 40%
+/usr/bin/sips -Z 1280 "${tmp}" --out "${final}" >/dev/null 2>&1
+/usr/bin/sips -s formatOptions 40 "${final}" --out "${final}" >/dev/null 2>&1
+```
+
+Результат ~200-400 KB. Два прохода, чуть больше файл, но работает без компиляции.
+
+---
+
+### Шаг 7: Idle-трекинг и подавление скринов при простое
+
+**Текущая проблема:** `capture-if-active.sh` проверяет idle < 60 сек и **пропускает активных** пользователей (логика инвертирована — `exit 0` когда idle МЕНЬШЕ порога, т.е. пользователь НЕДАВНО был активен).
+
+**Правильная логика (как в `~/focus-tracker-capture.sh`):**
+- Если idle > 300 сек → пользователь ушёл → НЕ делать скрин
+- Если idle < 300 сек → пользователь за компом → делать скрин
+
+Исправить `capture-if-active.sh`:
+```bash
+# Порог простоя: если idle БОЛЬШЕ этого — пропускаем
+: "${FOCUS_TRACK_IDLE_SEC:=300}"
+
+idle_line=$(/usr/sbin/ioreg -c IOHIDSystem -r -k HIDIdleTime 2>/dev/null | /usr/bin/grep HIDIdleTime | /usr/bin/head -1 || true)
+idle_ns="${idle_line##*= }"
+idle_ns="${idle_ns//[^0-9]/}"
+if [[ -n "${idle_ns}" ]]; then
+  idle_s=$((idle_ns / 1000000000))
+  if [[ "${idle_s}" -gt "${FOCUS_TRACK_IDLE_SEC}" ]]; then
+    echo "$(date): Idle ${idle_s}s > ${FOCUS_TRACK_IDLE_SEC}s, пропускаю" >> /tmp/focus-track.log
+    exit 0
+  fi
+fi
+```
+
+**Дополнительно — учёт idle в БД:**
+
+Опционально записывать `category: "idle"` когда пользователь вернулся после длительного простоя:
+- В `capture-random-loop.sh` отслеживать предыдущее состояние idle
+- Если прошлый тик был idle, а текущий — активен, записать в БД запись `{category: "idle", score: 0, summary: "Простой X минут"}`
+- Это даст полную картину на дашборде (видно когда юзер уходил)
+
+---
+
+### Шаг 8: Разрешение Screen Recording
 
 Это главный "гемор с макосью":
 
@@ -236,7 +317,7 @@ open http://localhost:5001
 
 ---
 
-### Шаг 7 (опционально): Cleanup скриншотов
+### Шаг 9 (опционально): Cleanup скриншотов
 
 Добавить в `capture-if-active.sh` после анализа:
 ```bash
@@ -248,11 +329,13 @@ find "$HOME/Library/Application Support/focus-track/captures" -name "*.jpg" -mti
 
 ## Порядок для модели-исполнителя
 
-1. **Сначала** — ручной тест (Шаг 5), чтобы убедиться что `analyze-screenshot.ts` вообще работает
-2. **Потом** — реализация streak API (Шаг 3)
-3. **Потом** — реализация pause (Шаг 4)
-4. **Потом** — скрипт setup (Шаг 1)
-5. **Последним** — загрузка LaunchAgent и проверка автозапуска
+1. **Сначала** — исправить idle-логику в `capture-if-active.sh` (Шаг 7) — сейчас она инвертирована
+2. **Потом** — сжатие скриншотов (Шаг 6) — скомпилировать Swift-утилиту или настроить sips
+3. **Потом** — ручной тест (Шаг 5), чтобы убедиться что цепочка работает с новым сжатием
+4. **Потом** — реализация streak API (Шаг 3)
+5. **Потом** — реализация pause (Шаг 4)
+6. **Потом** — скрипт setup (Шаг 1)
+7. **Последним** — загрузка LaunchAgent и проверка автозапуска
 
 ## Критические зависимости
 

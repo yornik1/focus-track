@@ -1,6 +1,5 @@
 import { sqliteTable, text, integer, real } from "drizzle-orm/sqlite-core";
 import { createInsertSchema } from "drizzle-zod";
-import { z } from "zod";
 
 export const focusLogTable = sqliteTable("focus_log", {
   id: integer("id").primaryKey({ autoIncrement: true }),
@@ -12,5 +11,6 @@ export const focusLogTable = sqliteTable("focus_log", {
 });
 
 export const insertFocusLogSchema = createInsertSchema(focusLogTable).omit({ id: true });
-export type InsertFocusLog = z.infer<typeof insertFocusLogSchema>;
+
+export type InsertFocusLog = typeof focusLogTable.$inferInsert;
 export type FocusLog = typeof focusLogTable.$inferSelect;

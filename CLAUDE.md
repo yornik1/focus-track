@@ -117,7 +117,7 @@ interface LLMProvider {
 |----------|--------|----------|
 | `GET /api/stats/today` | DONE | Статистика дня + hourly heatmap |
 | `GET /api/stats/calendar?month=YYYY-MM` | DONE | Avg score по дням месяца |
-| `GET /api/stats/streak` | **STUB** | Возвращает `{streak:0, best_streak:0, last7days:[]}` |
+| `GET /api/stats/streak` | DONE | Текущий streak, лучший streak, last7days (только рабочие дни) |
 | `GET /api/logs` | DONE | Фильтрация: date, date_from, date_to, category, min/max_score |
 | `PATCH /api/logs/:id` | DONE | Обновить category/score/summary |
 | `DELETE /api/logs/:id` | DONE | Удалить запись |
@@ -125,7 +125,7 @@ interface LLMProvider {
 | `POST /api/settings` | DONE | Пишет AppSettings JSON |
 | `POST /api/settings/test` | DONE | Проверка подключения к LLM |
 | `GET /api/status` | DONE | `watcher_alive` = была запись за последние 10 мин |
-| `POST /api/pause` | **STUB** | Заглушка, не управляет реальным watcher |
+| `POST /api/pause` | DONE | Пауза на N минут или до вечера (файл ~/.focus-track-pause) |
 
 ---
 
@@ -173,10 +173,12 @@ interface LLMProvider {
 **Capture flow:**
 ```
 LaunchAgent → capture-random-loop.sh → [sleep random] → capture-if-active.sh
-  1. ioreg HIDIdleTime — если idle < 60 сек → exit (пользователь неактивен)
-  2. screencapture -x -t jpg → /tmp/
-  3. sips -Z 1280 → ~/Library/Application Support/focus-track/captures/YYYYMMDD-HHMMSS.jpg
-  4. pnpm --filter @workspace/scripts run analyze <path> → INSERT в БД
+  1. Проверка паузы: если ~/.focus-track-pause существует и время не истекло → exit
+  2. ioreg HIDIdleTime — если idle > 300 сек → exit (пользователь ушёл)
+  3. screencapture -x -t jpg → /tmp/
+  4. sips -Z 1280 + quality 40% → ~/Library/Application Support/focus-track/captures/YYYYMMDD-HHMMSS.jpg (~150-350 KB)
+  5. pnpm --filter @workspace/scripts run analyze <path> → INSERT в БД
+  6. Cleanup: удаление скринов старше 7 дней
 ```
 
 **ВАЖНО:** Скриншотинг — это ОТДЕЛЬНЫЙ процесс (bash через LaunchAgent). Node.js НЕ делает скриншоты. Node.js только анализирует готовый JPEG.
@@ -226,11 +228,9 @@ React Dashboard (fetch → render)
 
 ## Known Issues / TODO
 
-- `GET /api/stats/streak` — заглушка, нет реальной логики подсчёта
-- `POST /api/pause` — заглушка, не влияет на реальный watcher
-- LaunchAgent plist содержит placeholder `/path/to/focus-track`
-- Нет cleanup старых скриншотов (растёт ~/Library/Application Support/focus-track/captures/)
-- `capture-if-active.sh` не проверяет файл паузы
+- LaunchAgent plist содержит placeholder `/path/to/focus-track` — используйте `scripts/setup-launchagent.sh` для установки
+- Нет Swift-утилиты для capture (используется screencapture + sips с quality 40%)
+- macOS Screen Recording permission требуется для Terminal/iTerm
 
 ---
 

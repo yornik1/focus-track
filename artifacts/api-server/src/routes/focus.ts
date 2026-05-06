@@ -9,6 +9,9 @@ import {
 } from "@workspace/db";
 import { eq, gte, lte, and, sql, desc } from "drizzle-orm";
 import { testLlmConnection } from "../llm-connection-test";
+import * as fs from "fs";
+import * as path from "path";
+import * as os from "os";
 
 const router = Router();
 
@@ -73,7 +76,7 @@ router.get("/stats/today", async (req, res) => {
   const avgScore = totalScore / logs.length;
   const focusedMinutes = logs.filter((log) => log.focus_score >= 7).length * 2; // примерно 2 мин на скрин
 
-  res.json({
+  return res.json({
     focus_score: latest.focus_score,
     category: latest.category,
     last_screenshot: latest.datetime,
@@ -139,7 +142,7 @@ router.get("/logs", async (req, res) => {
     conditions.push(lte(focusLogTable.timestamp, new Date(date_to as string).getTime() / 1000));
   }
   if (category) {
-    conditions.push(eq(focusLogTable.category, category as string));
+    conditions.push(eq(focusLogTable.category, category as "code" | "video" | "social" | "idle"));
   }
   if (min_score) {
     conditions.push(gte(focusLogTable.focus_score, Number(min_score)));
@@ -188,12 +191,102 @@ router.patch("/logs/:id", async (req, res) => {
 
 // GET /api/stats/streak
 router.get("/stats/streak", async (req, res) => {
-  // TODO: реальный подсчёт streak
-  res.json({
-    streak: 0,
-    best_streak: 0,
-    last7days: [],
-  });
+  const settings = readAppSettings() ?? getDefaultAppSettings();
+  const threshold = settings.focused_score_threshold ?? 6;
+
+  // Все записи за последние 90 дней
+  const since = new Date();
+  since.setDate(since.getDate() - 90);
+  const rows = await db
+    .select()
+    .from(focusLogTable)
+    .where(gte(focusLogTable.timestamp, Math.floor(since.getTime() / 1000)));
+
+  // Группируем по датам, считаем avg
+  const byDate = new Map<string, number[]>();
+  for (const row of rows) {
+    const date = row.datetime.slice(0, 10);
+    if (!byDate.has(date)) byDate.set(date, []);
+    byDate.get(date)!.push(row.focus_score);
+  }
+
+  // "Фокусный день" = avg_score >= threshold
+  const focusedDates = new Set<string>();
+  for (const [date, scores] of byDate) {
+    const avg = scores.reduce((a, b) => a + b, 0) / scores.length;
+    if (avg >= threshold) focusedDates.add(date);
+  }
+
+  // Текущий streak (только рабочие дни)
+  let streak = 0;
+  const today = new Date();
+  for (let i = 0; i < 90; i++) {
+    const d = new Date(today);
+    d.setDate(d.getDate() - i);
+    const dow = d.getDay();
+    if (dow === 0 || dow === 6) continue; // пропускаем выходные
+    const dateStr = d.toISOString().slice(0, 10);
+    if (focusedDates.has(dateStr)) {
+      streak++;
+    } else {
+      break;
+    }
+  }
+
+  // Best streak (максимальная последовательность рабочих дней)
+  const allDates = Array.from(byDate.keys()).sort();
+  let bestStreak = 0;
+  let currentRun = 0;
+  let prevDate: Date | null = null;
+
+  for (const dateStr of allDates) {
+    const d = new Date(dateStr);
+    const dow = d.getDay();
+    if (dow === 0 || dow === 6) continue; // пропускаем выходные
+
+    if (!focusedDates.has(dateStr)) {
+      currentRun = 0;
+      prevDate = null;
+      continue;
+    }
+
+    if (prevDate === null) {
+      currentRun = 1;
+    } else {
+      // Проверяем что это следующий рабочий день
+      let expectedDate = new Date(prevDate);
+      expectedDate.setDate(expectedDate.getDate() + 1);
+      // Пропускаем выходные
+      while (expectedDate.getDay() === 0 || expectedDate.getDay() === 6) {
+        expectedDate.setDate(expectedDate.getDate() + 1);
+      }
+      if (d.getTime() === expectedDate.getTime()) {
+        currentRun++;
+      } else {
+        currentRun = 1;
+      }
+    }
+
+    bestStreak = Math.max(bestStreak, currentRun);
+    prevDate = d;
+  }
+
+  // last7days
+  const last7days = [];
+  for (let i = 6; i >= 0; i--) {
+    const d = new Date(today);
+    d.setDate(d.getDate() - i);
+    const dateStr = d.toISOString().slice(0, 10);
+    const scores = byDate.get(dateStr);
+    const avg = scores ? scores.reduce((a, b) => a + b, 0) / scores.length : null;
+    last7days.push({
+      date: dateStr,
+      avg_score: avg ? Math.round(avg * 10) / 10 : null,
+      is_weekend: d.getDay() === 0 || d.getDay() === 6,
+    });
+  }
+
+  res.json({ streak, best_streak: bestStreak, last7days });
 });
 
 // DELETE /api/logs/:id
@@ -205,8 +298,24 @@ router.delete("/logs/:id", async (req, res) => {
 
 // POST /api/pause
 router.post("/pause", async (req, res) => {
-  // TODO: реальная пауза watcher через LaunchAgent
-  res.json({ success: true });
+  const { duration } = req.body; // минуты или "evening"
+  let pauseUntil: number;
+
+  if (duration === "evening") {
+    const end = new Date();
+    end.setHours(23, 59, 59);
+    pauseUntil = Math.floor(end.getTime() / 1000);
+  } else {
+    pauseUntil = Math.floor(Date.now() / 1000) + duration * 60;
+  }
+
+  const pauseFile = path.join(os.homedir(), ".focus-track-pause");
+  fs.writeFileSync(pauseFile, String(pauseUntil));
+
+  res.json({
+    success: true,
+    paused_until: new Date(pauseUntil * 1000).toISOString(),
+  });
 });
 
 // GET /api/settings
@@ -238,8 +347,8 @@ router.post("/settings/test", async (req, res) => {
   if (p !== "gemini" && p !== "ollama") {
     return res.status(400).json({ success: false, message: "provider must be gemini or ollama" });
   }
-  const result = await testLlmConnection(p, tokenStr);
-  res.status(200).json(result);
+  const result = await testLlmConnection(p as "gemini" | "ollama", tokenStr);
+  return res.status(200).json(result);
 });
 
 // GET /api/status
