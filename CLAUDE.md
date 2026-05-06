@@ -4,10 +4,33 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Focus-track is a productivity monitoring system that captures periodic screenshots on macOS when the user is active. The project uses a macOS LaunchAgent to run background screenshot capture with randomized intervals and idle detection.
+Focus-track is a productivity monitoring system that captures periodic screenshots on macOS when the user is active, analyzes them with LLM (Gemini/Ollama), and displays statistics in a web dashboard.
 
-Current implementation: macOS screenshot capture scripts
-Planned: NestJS backend with TypeScript, SQLite, Redis/BullMQ, Telegram integration, WebSocket support
+**Stack:**
+- macOS: LaunchAgent + bash scripts for screenshot capture
+- Backend: Express API (port 5000) with SQLite database
+- Frontend: React + TypeScript + Tailwind (Vite dev server)
+- LLM: Google Gemini Flash (default) or Ollama (local)
+- Database: SQLite with Drizzle ORM
+
+## Setup
+
+See `SETUP.md` for installation instructions.
+
+Quick start:
+```bash
+# Install dependencies
+pnpm install
+
+# Build API server
+pnpm --filter @workspace/api-server run build
+
+# Start API server (port 5000)
+PORT=5000 pnpm --filter @workspace/api-server run start
+
+# Start frontend dev server (port 5173)
+pnpm --filter @workspace/focus-tracker run dev
+```
 
 ## Testing
 
@@ -18,53 +41,51 @@ npm test
 
 Tests use Node.js built-in test runner (node:test) with ES modules (.mjs files).
 
-## macOS LaunchAgent Setup
+## Architecture
 
-The screenshot capture system consists of:
-- `mac/com.focus-track.screenshot.plist` - LaunchAgent configuration
-- `mac/capture-random-loop.sh` - Infinite loop with randomized sleep intervals
-- `mac/capture-if-active.sh` - Screenshot capture with idle detection
+### Workspace Structure
+- `lib/db` - SQLite schema with Drizzle ORM
+- `lib/llm` - LLM provider abstraction (Gemini + Ollama)
+- `artifacts/api-server` - Express REST API
+- `artifacts/focus-tracker` - React dashboard
+- `scripts` - CLI tools (analyze-screenshot)
+- `mac` - LaunchAgent plists and bash scripts
+
+### Screenshot Flow
+1. `capture-random-loop.sh` runs in background via LaunchAgent
+2. Every 120-600 sec (random), calls `capture-if-active.sh`
+3. `capture-if-active.sh` checks idle time, takes screenshot if active
+4. Calls `analyze-screenshot.ts` with image path
+5. Script analyzes via LLM, saves to `focus_log` table
+
+### Database Schema
+Table `focus_log`:
+- `id` - auto-increment primary key
+- `datetime` - ISO 8601 timestamp
+- `timestamp` - Unix timestamp (seconds)
+- `category` - enum: code, video, social, idle
+- `focus_score` - real (0-10)
+- `summary` - text (max 200 chars)
+
+### API Endpoints
+- `GET /api/stats/today` - today's stats with hourly heatmap
+- `GET /api/stats/calendar?month=YYYY-MM` - monthly calendar
+- `GET /api/logs` - filtered log entries with pagination
+- `PATCH /api/logs/:id` - update log entry
+- `GET /api/settings` - get settings
+- `POST /api/settings` - update settings
+- `GET /api/status` - watcher status
 
 ### Environment Variables
-
-Configure in the plist file:
-- `FOCUS_TRACK_ROOT` - Absolute path to repository (must be set before use)
-- `FOCUS_TRACK_IDLE_SEC` - Idle threshold in seconds (default: 60)
-- `FOCUS_TRACK_TICK_MIN_SEC` - Minimum interval between captures (default: 120)
-- `FOCUS_TRACK_TICK_MAX_SEC` - Maximum interval between captures (default: 600)
-
-### Screenshot Behavior
-
-- Captures only when idle time < `FOCUS_TRACK_IDLE_SEC`
-- Uses `screencapture -x -t jpg` for silent JPEG capture
-- Resizes to max 1280px on longest side using `sips -Z 1280`
-- Saves to `~/Library/Application Support/focus-track/captures/` with timestamp filenames
-
-## Architecture (Planned NestJS Backend)
-
-When implementing the backend, follow these principles from `.cursor/rules/project.mdc`:
-
-- Modular NestJS structure (see `docs/PROJECT_STRUCTURE.md` when it exists)
-- Strict TypeScript typing (no `any`)
-- All type contracts in `src/types/contracts.ts` - never duplicate types locally
-- Configuration via `ConfigService` only, use `getOrThrow` for required env vars
-- Comments in Russian
-
-### Stack
-- NestJS + TypeScript
-- SQLite with TypeORM (`@nestjs/typeorm`)
-- Redis/BullMQ for queues (`@nestjs/bullmq`)
-- Telegram via `nestjs-telegraf`
-- WebSocket (NestJS built-in)
-
-## Workflow Integration
-
-The project uses Notion for task tracking with custom Cursor skills:
-- `start-task` - Begin work on a Notion task (fetch, check dependencies, update status, start TDD)
-- `check` - Verify task completion against DoD checklist
-- `review-task` - Review changes, run checks, commit, update Notion status
-
-Current task tracked in `.cursor/rules/epic-current.mdc`
+- `FOCUS_TRACK_ROOT` - absolute path to repository
+- `FOCUS_TRACK_IDLE_SEC` - idle threshold (default: 60)
+- `FOCUS_TRACK_TICK_MIN_SEC` - min interval (default: 120)
+- `FOCUS_TRACK_TICK_MAX_SEC` - max interval (default: 600)
+- `FOCUS_PROVIDER` - gemini or ollama (default: gemini)
+- `GEMINI_API_KEY` - Google AI API key
+- `OLLAMA_HOST` - Ollama server URL (default: http://localhost:11434)
+- `DATABASE_PATH` - path to focus.db (default: ./focus.db)
+- `PORT` - API server port (default: 5000)
 
 ## Code Style
 
@@ -72,3 +93,6 @@ Current task tracked in `.cursor/rules/epic-current.mdc`
 - Minimal changes - don't refactor working code
 - No ASCII art, no summaries in responses
 - TDD approach - write failing tests first
+- Strict TypeScript typing (no `any`)
+- All type contracts in `lib/db/src/schema` and `lib/llm/src/types`
+
