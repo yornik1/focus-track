@@ -454,16 +454,151 @@ fi
 
 ---
 
+### Шаг 11: Settings → сохранение ключа + использование при анализе + модель gemini-2.5-flash
+
+**Текущее состояние:**
+
+1. `POST /api/settings/test` — принимает `{provider, token}`, проверяет соединение, **но не сохраняет** ключ
+2. `POST /api/settings` — сохраняет `{provider, token, ...}` в `focus-app-settings.json` — уже работает
+3. `analyze-screenshot.ts` — читает `readAppSettings()`, берёт оттуда `provider` и `token` — **уже использует сохранённый ключ**
+4. Модель захардкожена `gemini-2.0-flash-exp` в `GeminiProvider` конструкторе
+
+**Что нужно:**
+
+#### 11.1 Settings/test должен сохранять при успехе
+
+Файл: `artifacts/api-server/src/routes/focus.ts`, endpoint `POST /api/settings/test`.
+
+Сейчас test только проверяет соединение. Нужно: если тест прошёл — автоматически сохранять provider + token в settings (чтобы пользователь не жал отдельно "Save").
+
+```typescript
+router.post("/settings/test", async (req, res) => {
+  const { provider, token } = req.body;
+  const tokenStr = token != null ? String(token).trim() : "";
+  if (!provider || !tokenStr) {
+    return res.status(400).json({ success: false, message: "provider and token are required" });
+  }
+  const p = String(provider).toLowerCase();
+  if (p !== "gemini" && p !== "ollama") {
+    return res.status(400).json({ success: false, message: "provider must be gemini or ollama" });
+  }
+  const result = await testLlmConnection(p as "gemini" | "ollama", tokenStr);
+
+  // Если тест успешен — сохраняем provider и token в settings
+  if (result.success) {
+    const current = readAppSettings() ?? getDefaultAppSettings();
+    writeAppSettings({
+      ...current,
+      provider: p as "gemini" | "ollama",
+      token: tokenStr,
+    });
+  }
+
+  return res.status(200).json(result);
+});
+```
+
+---
+
+#### 11.2 Добавить поле `model` в AppSettings
+
+Файл: `lib/db/src/app-settings.ts`.
+
+Добавить поле `model` чтобы можно было менять модель из дашборда:
+
+```typescript
+export interface AppSettings {
+  provider: "gemini" | "ollama";
+  token: string;
+  model: string;  // новое: "gemini-2.5-flash" | "gemini-2.0-flash-exp" | "llava:7b" и т.д.
+  screenshot_interval: 1 | 2 | 5 | 10;
+  idle_threshold: number;
+  focused_score_threshold: number;
+}
+```
+
+Дефолт для gemini: `"gemini-2.5-flash"` (новая дешёвая модель с vision).
+Дефолт для ollama: `"llava:7b"`.
+
+В `getDefaultAppSettings()`:
+```typescript
+model: fromEnv === "ollama" ? "llava:7b" : "gemini-2.5-flash",
+```
+
+В `normalizeStoredSettings()` — fallback на дефолт если поле отсутствует (для совместимости со старым JSON).
+
+---
+
+#### 11.3 Передавать model из settings в analyze-screenshot
+
+Файл: `scripts/src/analyze-screenshot.ts`.
+
+```typescript
+const stored = readAppSettings();
+const MODEL = stored?.model ?? "gemini-2.5-flash";
+
+// ...
+const provider =
+  PROVIDER === "ollama"
+    ? new OllamaProvider(OLLAMA_HOST, MODEL)
+    : new GeminiProvider(GEMINI_API_KEY, MODEL);
+```
+
+`GeminiProvider` уже принимает `model` вторым аргументом — достаточно передать.
+
+---
+
+#### 11.4 Обновить дефолтную модель
+
+Файл: `lib/llm/src/gemini-provider.ts`, строка 16.
+
+```typescript
+// Было:
+constructor(apiKey: string, model: string = "gemini-2.0-flash-exp")
+
+// Стало:
+constructor(apiKey: string, model: string = "gemini-2.5-flash")
+```
+
+---
+
+#### 11.5 Фронт — добавить выбор модели в Settings
+
+Файл: `artifacts/focus-tracker/src/pages/Settings.tsx`.
+
+Добавить dropdown/input для `model`:
+- Для gemini: предложить `gemini-2.5-flash` (по умолчанию), `gemini-2.0-flash-exp`
+- Для ollama: предложить `llava:7b` (по умолчанию), свободный ввод
+
+---
+
+**Итого flow после реализации:**
+
+```
+Пользователь в дашборде:
+  1. Выбирает provider (gemini/ollama)
+  2. Вводит token (API key / host)
+  3. Выбирает модель (gemini-2.5-flash)
+  4. Нажимает "Test connection"
+     → POST /api/settings/test
+     → Тест проходит → автоматически сохраняется в focus-app-settings.json
+  5. Следующий analyze-screenshot.ts читает JSON
+     → Использует сохранённый provider + token + model
+```
+
+---
+
 ## Порядок для модели-исполнителя
 
 1. **Сначала** — фиксы из ревью (Шаг 10) — быстрые правки, предотвращают баги
-2. **Потом** — исправить idle-логику в `capture-if-active.sh` (Шаг 7) — сейчас инвертирована
-3. **Потом** — сжатие скриншотов (Шаг 6) — скомпилировать Swift-утилиту или настроить sips
-4. **Потом** — ручной тест (Шаг 5), чтобы убедиться что цепочка работает с новым сжатием
-5. **Потом** — реализация streak API (Шаг 3)
-6. **Потом** — реализация pause (Шаг 4)
-7. **Потом** — скрипт setup (Шаг 1)
-8. **Последним** — загрузка LaunchAgent и проверка автозапуска
+2. **Потом** — settings + model (Шаг 11) — чтобы ключ сохранялся и модель была правильная
+3. **Потом** — исправить idle-логику в `capture-if-active.sh` (Шаг 7) — сейчас инвертирована
+4. **Потом** — сжатие скриншотов (Шаг 6) — скомпилировать Swift-утилиту или настроить sips
+5. **Потом** — ручной тест (Шаг 5), чтобы убедиться что цепочка работает
+6. **Потом** — реализация streak API (Шаг 3)
+7. **Потом** — реализация pause (Шаг 4)
+8. **Потом** — скрипт setup (Шаг 1)
+9. **Последним** — загрузка LaunchAgent и проверка автозапуска
 
 ## Критические зависимости
 

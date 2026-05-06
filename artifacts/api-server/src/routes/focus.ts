@@ -344,7 +344,7 @@ router.post("/settings", (req, res) => {
 
 // POST /api/settings/test
 router.post("/settings/test", async (req, res) => {
-  const { provider, token } = req.body;
+  const { provider, token, model } = req.body;
   const tokenStr = token != null ? String(token).trim() : "";
   if (!provider || !tokenStr) {
     return res.status(400).json({ success: false, message: "provider and token are required" });
@@ -354,6 +354,19 @@ router.post("/settings/test", async (req, res) => {
     return res.status(400).json({ success: false, message: "provider must be gemini or ollama" });
   }
   const result = await testLlmConnection(p as "gemini" | "ollama", tokenStr);
+
+  // Если тест успешен — сохраняем provider, token и model в settings
+  if (result.success) {
+    const current = readAppSettings() ?? getDefaultAppSettings();
+    const modelStr = model != null ? String(model).trim() : (p === "ollama" ? "llava:7b" : "gemini-2.5-flash");
+    writeAppSettings({
+      ...current,
+      provider: p as "gemini" | "ollama",
+      token: tokenStr,
+      model: modelStr,
+    });
+  }
+
   return res.status(200).json(result);
 });
 

@@ -56,6 +56,7 @@ export interface LogsFilter {
 export interface Settings {
   provider: "gemini" | "ollama";
   token: string;
+  model: string;
   screenshot_interval: 1 | 2 | 5 | 10;
   idle_threshold: number;
   focused_score_threshold: number;
@@ -170,6 +171,7 @@ const MOCK_TODAY: TodayStats = {
 const MOCK_SETTINGS: Settings = {
   provider: "gemini",
   token: "AIza••••••••••••••••",
+  model: "gemini-2.5-flash",
   screenshot_interval: 2,
   idle_threshold: 120,
   focused_score_threshold: 6,
@@ -334,14 +336,14 @@ export async function saveSettings(data: Settings): Promise<Settings> {
   });
 }
 
-export async function testSettings(provider: string, token: string): Promise<{ success: boolean; message: string }> {
+export async function testSettings(provider: string, token: string, model: string): Promise<{ success: boolean; message: string }> {
   if (USE_MOCK) {
     await new Promise((r) => setTimeout(r, 800));
     return { success: true, message: "Connection successful — model responded in 312ms" };
   }
   return apiFetch<{ success: boolean; message: string }>("/api/settings/test", {
     method: "POST",
-    body: JSON.stringify({ provider, token }),
+    body: JSON.stringify({ provider, token, model }),
   });
 }
 

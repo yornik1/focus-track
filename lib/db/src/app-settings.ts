@@ -5,6 +5,7 @@ import path from "node:path";
 export interface AppSettings {
   provider: "gemini" | "ollama";
   token: string;
+  model: string;
   screenshot_interval: 1 | 2 | 5 | 10;
   idle_threshold: number;
   focused_score_threshold: number;
@@ -30,9 +31,11 @@ export function getDefaultAppSettings(): AppSettings {
     fromEnv === "ollama"
       ? (process.env.OLLAMA_HOST ?? "")
       : (process.env.GEMINI_API_KEY ?? "");
+  const model = fromEnv === "ollama" ? "llava:7b" : "gemini-2.5-flash";
   return {
     provider: fromEnv,
     token,
+    model,
     screenshot_interval: 2,
     idle_threshold: 60,
     focused_score_threshold: 7,
@@ -64,6 +67,7 @@ function normalizeStoredSettings(parsed: unknown): AppSettings | null {
     return null;
   }
   const token = o.token != null ? String(o.token) : "";
+  const model = o.model != null ? String(o.model) : (provider === "ollama" ? "llava:7b" : "gemini-2.5-flash");
   const si = Number(o.screenshot_interval);
   const screenshot_interval = ALLOWED_INTERVALS.has(si as AppSettings["screenshot_interval"])
     ? (si as AppSettings["screenshot_interval"])
@@ -74,6 +78,7 @@ function normalizeStoredSettings(parsed: unknown): AppSettings | null {
   return {
     provider,
     token,
+    model,
     screenshot_interval,
     idle_threshold,
     focused_score_threshold,
@@ -91,6 +96,7 @@ export function normalizeSettingsPayload(body: unknown): AppSettings {
     throw new Error("provider must be gemini or ollama");
   }
   const token = b.token != null ? String(b.token) : "";
+  const model = b.model != null ? String(b.model) : (provider === "ollama" ? "llava:7b" : "gemini-2.5-flash");
   const si = Number(b.screenshot_interval);
   if (!ALLOWED_INTERVALS.has(si as AppSettings["screenshot_interval"])) {
     throw new Error("screenshot_interval must be 1, 2, 5, or 10");
@@ -106,6 +112,7 @@ export function normalizeSettingsPayload(body: unknown): AppSettings {
   return {
     provider,
     token,
+    model,
     screenshot_interval: si as AppSettings["screenshot_interval"],
     idle_threshold: Math.round(idle),
     focused_score_threshold: Math.round(focused),

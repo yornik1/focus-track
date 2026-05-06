@@ -10,7 +10,7 @@
 ### 2. Агрессивное сжатие скриншотов
 - Добавлен `sips -s formatOptions 40` — JPEG quality 40%
 - Размер файлов: ~150-350 KB вместо 1-2 MB
-- Добавлен cleanup: удаление скринов старше 7 дней
+- Добавлен cleanup: удаление скринов старше 7 дней (раз в день)
 
 ### 3. Реализован `GET /api/stats/streak`
 - Подсчёт текущего streak (только рабочие дни)
@@ -40,16 +40,32 @@
 - Обновлён CLAUDE.md (убраны STUB статусы)
 - Добавлена информация о новых фичах
 
+### 8. Фиксы из код-ревью (Step 10)
+- **10.1** Streak не обнуляется если сегодня ещё нет данных (утром)
+- **10.2** Валидация duration в POST /api/pause (отклоняет негативные числа и невалидные строки)
+- **10.3** sips использует tmp-файл вместо in-place перезаписи
+- **10.4** setup-launchagent.sh безопасно читает .env через grep (не source)
+- **10.5** Cleanup запускается раз в день через marker-файл
+
+### 9. Settings + выбор модели (Step 11)
+- **11.1** POST /api/settings/test автоматически сохраняет provider/token/model при успешном тесте
+- **11.2** Добавлено поле `model` в AppSettings с дефолтами (gemini-2.5-flash, llava:7b)
+- **11.3** analyze-screenshot.ts передаёт model из settings в провайдеры
+- **11.4** Дефолтная модель Gemini изменена на gemini-2.5-flash (вместо gemini-2.0-flash-exp)
+- **11.5** Frontend поддержка выбора модели (TODO — требует обновления UI)
+
 ## Тестирование
 
 Все эндпоинты проверены:
 - ✅ `GET /api/stats/streak` — возвращает корректную структуру
-- ✅ `POST /api/pause` — создаёт файл с timestamp
+- ✅ `POST /api/pause` — валидация работает, создаёт файл с timestamp
+- ✅ `GET /api/settings` — возвращает model: "gemini-2.5-flash"
 - ✅ TypeScript typecheck проходит без ошибок
 - ✅ Dev-сервер запускается и отвечает
 
 ## Что осталось
 
+- **11.5** Добавить UI для выбора модели в Settings (dropdown/input)
 - Установка LaunchAgent (требует ручного запуска setup-скрипта)
 - Screen Recording permission для Terminal (ручная настройка в System Settings)
 - Полный интеграционный тест с реальным LaunchAgent

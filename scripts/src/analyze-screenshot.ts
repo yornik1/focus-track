@@ -11,6 +11,7 @@ const PROVIDER = fromFile
   ? stored.provider
   : ((process.env.FOCUS_PROVIDER || "gemini") as "gemini" | "ollama");
 const trimmedToken = fromFile ? stored.token.trim() : "";
+const MODEL = fromFile && stored.model ? stored.model : (PROVIDER === "ollama" ? "llava:7b" : "gemini-2.5-flash");
 
 const GEMINI_API_KEY =
   PROVIDER === "gemini"
@@ -29,8 +30,8 @@ async function analyzeScreenshot(imagePath: string) {
   // Выбираем провайдера
   const provider =
     PROVIDER === "ollama"
-      ? new OllamaProvider(OLLAMA_HOST)
-      : new GeminiProvider(GEMINI_API_KEY);
+      ? new OllamaProvider(OLLAMA_HOST, MODEL)
+      : new GeminiProvider(GEMINI_API_KEY, MODEL);
 
   // Анализируем
   const result = await provider.analyze(imageBase64);

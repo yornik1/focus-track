@@ -23,6 +23,7 @@ export default function SettingsPage() {
   const [form, setForm] = useState<Settings>({
     provider: "gemini",
     token: "",
+    model: "gemini-2.5-flash",
     screenshot_interval: 2,
     idle_threshold: 120,
     focused_score_threshold: 6,
@@ -43,7 +44,7 @@ export default function SettingsPage() {
   });
 
   const testMutation = useMutation({
-    mutationFn: () => testSettings(form.provider, form.token),
+    mutationFn: () => testSettings(form.provider, form.token, form.model),
     onSuccess: (result) => setTestResult(result),
     onError: () => setTestResult({ success: false, message: "Connection failed. Check provider and token." }),
   });
@@ -78,7 +79,15 @@ export default function SettingsPage() {
             {(["gemini", "ollama"] as const).map((p) => (
               <button
                 key={p}
-                onClick={() => update("provider", p)}
+                onClick={() => {
+                  update("provider", p);
+                  // Автоматически обновляем model при смене provider
+                  if (p === "gemini" && form.model.includes("llava")) {
+                    update("model", "gemini-2.5-flash");
+                  } else if (p === "ollama" && form.model.includes("gemini")) {
+                    update("model", "llava:7b");
+                  }
+                }}
                 className={`px-4 py-2 rounded-md text-sm font-medium border transition-colors ${
                   form.provider === p
                     ? "bg-primary text-primary-foreground border-primary"
@@ -126,6 +135,40 @@ export default function SettingsPage() {
               {testResult.message}
             </div>
           )}
+        </div>
+
+        <div className="space-y-1">
+          <label className="text-sm text-muted-foreground">Model</label>
+          {form.provider === "gemini" ? (
+            <div className="flex gap-2 mt-1">
+              {(["gemini-2.5-flash", "gemini-2.0-flash-exp"] as const).map((m) => (
+                <button
+                  key={m}
+                  onClick={() => update("model", m)}
+                  className={`px-3 py-1.5 rounded-md text-xs font-medium border transition-colors ${
+                    form.model === m
+                      ? "bg-primary text-primary-foreground border-primary"
+                      : "bg-card border-border text-muted-foreground hover:text-foreground hover:bg-accent"
+                  }`}
+                >
+                  {m}
+                </button>
+              ))}
+            </div>
+          ) : (
+            <input
+              type="text"
+              value={form.model}
+              onChange={(e) => update("model", e.target.value)}
+              placeholder="llava:7b"
+              className="w-full bg-background border border-input rounded-md px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-ring font-mono placeholder:font-sans placeholder:text-muted-foreground/60"
+            />
+          )}
+          <p className="text-xs text-muted-foreground mt-1">
+            {form.provider === "gemini"
+              ? "gemini-2.5-flash is faster and cheaper (recommended)"
+              : "Model must be installed in Ollama (e.g., llava:7b, llava:13b)"}
+          </p>
         </div>
       </div>
 
