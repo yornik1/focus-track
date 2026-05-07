@@ -17,15 +17,15 @@
 	<array>
 		<string>/bin/bash</string>
 		<string>-lc</string>
-		<string>cd "$FOCUS_TRACK_ROOT" && pnpm --filter @workspace/api-server run start</string>
+		<string>export PATH="$HOME/.nvm/versions/node/$(ls $HOME/.nvm/versions/node/ 2>/dev/null | tail -1)/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:$PATH" && cd "$FOCUS_TRACK_ROOT" && pnpm -w run dev</string>
 	</array>
 	<key>RunAtLoad</key>
 	<true/>
 	<key>KeepAlive</key>
 	<true/>
 	<key>StandardOutPath</key>
-	<string>/tmp/focus-track-api.out.log</string>
+	<string>/path/to/focus-track/data/logs/api-server.out.log</string>
 	<key>StandardErrorPath</key>
-	<string>/tmp/focus-track-api.err.log</string>
+	<string>/path/to/focus-track/data/logs/api-server.err.log</string>
 </dict>
 </plist>
