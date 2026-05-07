@@ -7,12 +7,18 @@ const START_HOUR = 7;
 const END_HOUR = 21;
 const SCREENSHOT_INTERVAL_MIN = 5;
 
-const CAT_COLORS: Record<Category, { bg: string; border: string; text: string }> = {
-  code:   { bg: "rgba(59,130,246,0.18)",  border: "#3b82f6", text: "#93c5fd" },
-  video:  { bg: "rgba(168,85,247,0.18)", border: "#a855f7", text: "#d8b4fe" },
-  social: { bg: "rgba(245,158,11,0.18)", border: "#f59e0b", text: "#fcd34d" },
-  idle:   { bg: "rgba(107,114,128,0.12)", border: "#6b7280", text: "#9ca3af" },
+const CAT_COLORS: Record<string, { bg: string; border: string; text: string }> = {
+  code:          { bg: "rgba(59,130,246,0.18)",  border: "#3b82f6", text: "#93c5fd" },
+  video:         { bg: "rgba(168,85,247,0.18)",  border: "#a855f7", text: "#d8b4fe" },
+  social:        { bg: "rgba(245,158,11,0.18)",  border: "#f59e0b", text: "#fcd34d" },
+  research:      { bg: "rgba(16,185,129,0.18)",  border: "#10b981", text: "#6ee7b7" },
+  communication: { bg: "rgba(6,182,212,0.18)",   border: "#06b6d4", text: "#67e8f9" },
+  gaming:        { bg: "rgba(239,68,68,0.18)",   border: "#ef4444", text: "#fca5a5" },
+  news:          { bg: "rgba(249,115,22,0.18)",  border: "#f97316", text: "#fdba74" },
+  writing:       { bg: "rgba(99,102,241,0.18)",  border: "#6366f1", text: "#a5b4fc" },
+  design:        { bg: "rgba(236,72,153,0.18)",  border: "#ec4899", text: "#f9a8d4" },
 };
+const DEFAULT_CAT_COLOR = { bg: "rgba(107,114,128,0.12)", border: "#6b7280", text: "#9ca3af" };
 
 const DAY_NAMES = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
@@ -130,7 +136,7 @@ interface TooltipData {
 }
 
 export default function CalendarPage() {
-  const today = new Date("2025-05-06T15:30:00");
+  const today = new Date();
   const [weekStart, setWeekStart] = useState<Date>(() => getMonday(today));
   const [tooltip, setTooltip] = useState<TooltipData | null>(null);
   const gridRef = useRef<HTMLDivElement>(null);
@@ -293,7 +299,7 @@ export default function CalendarPage() {
                     const clippedTop = Math.max(top, 0);
                     const clippedHeight = Math.min(height - (clippedTop - top), (END_HOUR - START_HOUR) * HOUR_HEIGHT - clippedTop);
                     if (clippedHeight <= 0) return null;
-                    const colors = CAT_COLORS[seg.category];
+                    const colors = CAT_COLORS[seg.category] ?? DEFAULT_CAT_COLOR;
                     const showLabel = clippedHeight > 20;
                     const showScore = clippedHeight > 34;
 
@@ -352,9 +358,9 @@ export default function CalendarPage() {
             <span
               className="text-xs font-semibold px-2 py-0.5 rounded"
               style={{
-                backgroundColor: CAT_COLORS[tooltip.segment.category].bg,
-                color: CAT_COLORS[tooltip.segment.category].text,
-                border: `1px solid ${CAT_COLORS[tooltip.segment.category].border}`,
+                backgroundColor: (CAT_COLORS[tooltip.segment.category] ?? DEFAULT_CAT_COLOR).bg,
+                color: (CAT_COLORS[tooltip.segment.category] ?? DEFAULT_CAT_COLOR).text,
+                border: `1px solid ${(CAT_COLORS[tooltip.segment.category] ?? DEFAULT_CAT_COLOR).border}`,
               }}
             >
               {tooltip.segment.category}
@@ -379,8 +385,8 @@ export default function CalendarPage() {
         </div>
       )}
 
-      <div className="flex items-center gap-4 shrink-0 pt-1">
-        {(["code", "video", "social", "idle"] as Category[]).map((cat) => (
+      <div className="flex items-center gap-4 shrink-0 pt-1 flex-wrap">
+        {Object.keys(CAT_COLORS).map((cat) => (
           <div key={cat} className="flex items-center gap-1.5">
             <div
               className="w-3 h-3 rounded-sm"

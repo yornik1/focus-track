@@ -138,10 +138,10 @@ router.get("/logs", async (req, res) => {
     conditions.push(gte(focusLogTable.timestamp, new Date(date_from as string).getTime() / 1000));
   }
   if (date_to) {
-    conditions.push(lte(focusLogTable.timestamp, new Date(date_to as string).getTime() / 1000));
+    conditions.push(lte(focusLogTable.timestamp, new Date(date_to as string).getTime() / 1000 + 86400));
   }
   if (category) {
-    conditions.push(eq(focusLogTable.category, category as "code" | "video" | "social" | "idle"));
+    conditions.push(eq(focusLogTable.category, category as string));
   }
   if (min_score) {
     conditions.push(gte(focusLogTable.focus_score, Number(min_score)));

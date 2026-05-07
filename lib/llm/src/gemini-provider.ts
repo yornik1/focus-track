@@ -1,13 +1,14 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
-import type { LLMProvider, AnalysisResult, Category } from "./types";
+import type { LLMProvider, AnalysisResult } from "./types";
 
-const PROMPT = `Analyze this screenshot and provide:
-1. Focus score (0-10): How focused is the user? 10 = deep work, 0 = distracted
-2. Category: code, video, social, or idle
-3. Summary: One short sentence describing what the user is doing
+const PROMPT = `Analyze this screenshot. What is the user doing?
 
-Respond in JSON format:
-{"score": <number>, "category": "<category>", "summary": "<text>"}`;
+Return JSON:
+{"score": <0-10>, "category": "<string>", "summary": "<one sentence>"}
+
+- score: focus level. 10 = deep productive work, 0 = pure distraction
+- category: short label for the activity. Examples: code, research, design, writing, video, social, gaming, news, shopping, communication. Pick the best fit or invent your own — one word, lowercase.
+- summary: what exactly is on screen, one sentence, max 200 chars`;
 
 export class GeminiProvider implements LLMProvider {
   private client: GoogleGenerativeAI;
@@ -48,13 +49,8 @@ export class GeminiProvider implements LLMProvider {
 
     return {
       score: Math.max(0, Math.min(10, Number(json.score))),
-      category: this.validateCategory(json.category),
+      category: String(json.category).toLowerCase().slice(0, 30),
       summary: String(json.summary).slice(0, 200),
     };
-  }
-
-  private validateCategory(cat: string): Category {
-    const valid: Category[] = ["code", "video", "social", "idle"];
-    return valid.includes(cat as Category) ? (cat as Category) : "idle";
   }
 }

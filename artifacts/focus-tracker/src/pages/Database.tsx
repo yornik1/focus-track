@@ -2,15 +2,18 @@ import { useState, useCallback } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { getLogs, patchLog, deleteLog, type LogEntry, type Category, type LogsFilter } from "@/api";
 
-const CATEGORIES: Category[] = ["code", "video", "social", "idle"];
+const CATEGORY_COLORS: Record<string, string> = {
+  code: "bg-blue-500/15 text-blue-300 border border-blue-500/20",
+  video: "bg-purple-500/15 text-purple-300 border border-purple-500/20",
+  social: "bg-amber-500/15 text-amber-300 border border-amber-500/20",
+  research: "bg-emerald-500/15 text-emerald-300 border border-emerald-500/20",
+  communication: "bg-cyan-500/15 text-cyan-300 border border-cyan-500/20",
+  gaming: "bg-red-500/15 text-red-300 border border-red-500/20",
+  news: "bg-orange-500/15 text-orange-300 border border-orange-500/20",
+};
 
 function categoryBadgeClass(cat: Category): string {
-  switch (cat) {
-    case "code": return "bg-blue-500/15 text-blue-300 border border-blue-500/20";
-    case "video": return "bg-purple-500/15 text-purple-300 border border-purple-500/20";
-    case "social": return "bg-amber-500/15 text-amber-300 border border-amber-500/20";
-    case "idle": return "bg-zinc-500/15 text-zinc-400 border border-zinc-500/20";
-  }
+  return CATEGORY_COLORS[cat] ?? "bg-zinc-500/15 text-zinc-400 border border-zinc-500/20";
 }
 
 function scoreTextColor(score: number): string {
@@ -85,6 +88,7 @@ export default function DatabasePage() {
 
   const entries: LogEntry[] = (data as any)?.entries ?? [];
   const total: number = (data as any)?.total ?? 0;
+  const uniqueCategories = [...new Set(entries.map((e) => e.category))].sort();
   const pageEntries = entries.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
   const totalPages = Math.ceil(entries.length / PAGE_SIZE);
 
@@ -136,7 +140,7 @@ export default function DatabasePage() {
               className="bg-background border border-input rounded-md px-3 py-1.5 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-ring"
             >
               <option value="">All</option>
-              {CATEGORIES.map((c) => (
+              {uniqueCategories.map((c) => (
                 <option key={c} value={c}>{c.charAt(0).toUpperCase() + c.slice(1)}</option>
               ))}
             </select>
@@ -226,7 +230,7 @@ export default function DatabasePage() {
                             onKeyDown={(e) => { if (e.key === "Enter") handleEditCommit(entry); if (e.key === "Escape") setEditState(null); }}
                             className="bg-background border border-input rounded px-1.5 py-0.5 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-ring"
                           >
-                            {CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
+                            {uniqueCategories.map((c) => <option key={c} value={c}>{c}</option>)}
                           </select>
                         ) : (
                           <button

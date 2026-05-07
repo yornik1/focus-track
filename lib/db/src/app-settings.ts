@@ -1,5 +1,6 @@
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 /** Настройки UI/захвата, синхронные с дашбордом; `token` для Gemini — ключ, для Ollama — base URL. */
 export interface AppSettings {
@@ -15,8 +16,16 @@ const SETTINGS_FILENAME = "focus-app-settings.json";
 
 const ALLOWED_INTERVALS = new Set<AppSettings["screenshot_interval"]>([1, 2, 5, 10]);
 
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
+function resolveProjectRoot(): string {
+  if (process.env.FOCUS_TRACK_ROOT) return process.env.FOCUS_TRACK_ROOT;
+  // lib/db/src/ → lib/db/ → lib/ → корень проекта
+  return path.resolve(__dirname, "../../..");
+}
+
 function resolveDbPath(): string {
-  return path.resolve(process.env.DATABASE_PATH || path.join(process.cwd(), "focus.db"));
+  return path.resolve(process.env.DATABASE_PATH || path.join(resolveProjectRoot(), "focus.db"));
 }
 
 /** Абсолютный путь к JSON с настройками (каталог тот же, что у SQLite). */

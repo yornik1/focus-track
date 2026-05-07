@@ -19,13 +19,18 @@ function categoryLabel(cat: Category): string {
   return cat.charAt(0).toUpperCase() + cat.slice(1);
 }
 
+const CATEGORY_COLORS: Record<string, string> = {
+  code: "bg-blue-500/15 text-blue-300 border border-blue-500/20",
+  video: "bg-purple-500/15 text-purple-300 border border-purple-500/20",
+  social: "bg-amber-500/15 text-amber-300 border border-amber-500/20",
+  research: "bg-emerald-500/15 text-emerald-300 border border-emerald-500/20",
+  communication: "bg-cyan-500/15 text-cyan-300 border border-cyan-500/20",
+  gaming: "bg-red-500/15 text-red-300 border border-red-500/20",
+  news: "bg-orange-500/15 text-orange-300 border border-orange-500/20",
+};
+
 function categoryBadgeClass(cat: Category): string {
-  switch (cat) {
-    case "code": return "bg-blue-500/15 text-blue-300 border border-blue-500/20";
-    case "video": return "bg-purple-500/15 text-purple-300 border border-purple-500/20";
-    case "social": return "bg-amber-500/15 text-amber-300 border border-amber-500/20";
-    case "idle": return "bg-zinc-500/15 text-zinc-400 border border-zinc-500/20";
-  }
+  return CATEGORY_COLORS[cat] ?? "bg-zinc-500/15 text-zinc-400 border border-zinc-500/20";
 }
 
 function formatTime(iso: string): string {

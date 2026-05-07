@@ -1,7 +1,7 @@
 const USE_MOCK = false;
 const BASE_URL = "";
 
-export type Category = "code" | "video" | "social" | "idle";
+export type Category = string;
 
 export interface TodayStats {
   focus_score: number;

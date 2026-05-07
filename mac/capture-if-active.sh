@@ -2,6 +2,8 @@
 # Периодический снимок экрана: пропуск при простое, JPEG 1280px quality 40%, LLM-анализ.
 set -euo pipefail
 
+export PATH="$HOME/.nvm/versions/node/$(ls "$HOME/.nvm/versions/node/" 2>/dev/null | tail -1)/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:$PATH"
+
 : "${FOCUS_TRACK_IDLE_SEC:=300}"
 : "${FOCUS_TRACK_ROOT:=$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")/.." && pwd)}"
 
@@ -35,21 +37,60 @@ if [[ -n "${idle_ns}" ]]; then
   fi
 fi
 
-tmp="/tmp/focus-capture-$$-${RANDOM}.jpg"
-/usr/sbin/screencapture -x -t jpg "${tmp}"
-
 stamp=$(/bin/date +%Y%m%d-%H%M%S)
 final="${CAPTURES_DIR}/${stamp}.jpg"
 
-if ! /usr/bin/sips -Z 1280 -s formatOptions 40 "${tmp}" --out "${final}" >/dev/null 2>&1; then
-  /bin/mv "${tmp}" "${final}"
-else
-  /bin/rm -f "${tmp}"
+# Swift-утилита: ScreenCaptureKit + resize 1280 + quality 0.4 за один проход
+"${FOCUS_TRACK_ROOT}/mac/bin/focus-capture" "${final}" 1280 0.4 2>> "${LOG_FILE}"
+if [[ ! -s "${final}" ]]; then
+  echo "$(date): Скриншот пустой, пропускаю" >> "${LOG_FILE}"
+  rm -f "${final}"
+  exit 0
 fi
 
 # Анализ через LLM и запись в БД
 cd "${FOCUS_TRACK_ROOT}"
-pnpm --filter @workspace/scripts run analyze "${final}" >> "${LOG_FILE}" 2>&1 || true
+FAIL_COUNTER="${DATA_DIR}/.fail-count"
+FAIL_NOTIFY_THRESHOLD=3
+
+pnpm --filter @workspace/scripts run analyze "${final}" >> "${LOG_FILE}" 2>&1
+analyze_exit=$?
+
+if [[ "${analyze_exit}" -ne 0 ]]; then
+  # Проверяем что это НЕ сетевая ошибка (curl к google резолвится)
+  if curl -s --max-time 5 https://google.com > /dev/null 2>&1; then
+    # Сеть есть, значит это реальная ошибка (API key, quota, модель)
+    count=$(cat "${FAIL_COUNTER}" 2>/dev/null || echo 0)
+    count=$((count + 1))
+    echo "${count}" > "${FAIL_COUNTER}"
+
+    echo "$(date): Анализ провалился (${count}/${FAIL_NOTIFY_THRESHOLD})" >> "${LOG_FILE}"
+
+    if [[ "${count}" -eq "${FAIL_NOTIFY_THRESHOLD}" ]]; then
+      # Отправить в Telegram
+      if [[ -f "${FOCUS_TRACK_ROOT}/.env" ]]; then
+        TG_BOT_TOKEN=$(grep '^TG_BOT_TOKEN=' "${FOCUS_TRACK_ROOT}/.env" 2>/dev/null | cut -d= -f2- | tr -d '"' | tr -d "'")
+        TG_CHAT_ID=$(grep '^TG_CHAT_ID=' "${FOCUS_TRACK_ROOT}/.env" 2>/dev/null | cut -d= -f2- | tr -d '"' | tr -d "'")
+
+        if [[ -n "${TG_BOT_TOKEN:-}" && -n "${TG_CHAT_ID:-}" ]]; then
+          msg="⚠️ Focus Tracker: анализ скринов не работает уже ${count} раз подряд. Проверь API key / квоту."
+          curl -s "https://api.telegram.org/bot${TG_BOT_TOKEN}/sendMessage" \
+            -d chat_id="${TG_CHAT_ID}" \
+            -d text="${msg}" >> "${LOG_FILE}" 2>&1 || true
+          echo "$(date): Отправлено уведомление в Telegram" >> "${LOG_FILE}"
+        fi
+      fi
+    fi
+  else
+    echo "$(date): Анализ провалился, но сети нет — не считаем ошибкой" >> "${LOG_FILE}"
+  fi
+else
+  # Успех — сбрасываем счётчик
+  if [[ -f "${FAIL_COUNTER}" ]]; then
+    rm -f "${FAIL_COUNTER}"
+    echo "$(date): Анализ успешен, счётчик сброшен" >> "${LOG_FILE}"
+  fi
+fi
 
 # Cleanup: удалять скрины старше 7 дней (раз в день)
 CLEANUP_MARKER="${DATA_DIR}/.cleanup-$(date +%Y%m%d)"

@@ -1,9 +1,12 @@
 import { drizzle } from "drizzle-orm/better-sqlite3";
 import Database from "better-sqlite3";
 import path from "path";
+import { fileURLToPath } from "url";
 import * as schema from "./schema";
 
-const dbPath = process.env.DATABASE_PATH || path.join(process.cwd(), "focus.db");
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const projectRoot = process.env.FOCUS_TRACK_ROOT || path.resolve(__dirname, "../../..");
+const dbPath = process.env.DATABASE_PATH || path.join(projectRoot, "focus.db");
 const sqlite = new Database(dbPath);
 
 sqlite.exec(`

@@ -1,4 +1,4 @@
-export type Category = "code" | "video" | "social" | "idle";
+export type Category = string;
 
 export interface AnalysisResult {
   score: number; // 0-10

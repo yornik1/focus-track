@@ -1,24 +1,30 @@
 #!/usr/bin/env bash
-# Бесконечный цикл: один снимок (с idle-check внутри), пауза случайной длины в заданных пределах секунд.
+# Бесконечный цикл: один снимок (с idle-check внутри), пауза случайной длины.
+# Интервал перечитывается из focus-app-settings.json каждый тик.
 set -euo pipefail
 
-: "${FOCUS_TRACK_TICK_MIN_SEC:=120}"
-: "${FOCUS_TRACK_TICK_MAX_SEC:=600}"
-
-min="${FOCUS_TRACK_TICK_MIN_SEC}"
-max="${FOCUS_TRACK_TICK_MAX_SEC}"
-if (( min > max )); then
-  t="${min}"
-  min="${max}"
-  max="${t}"
-fi
-
 _here="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
+_root="$(cd "${_here}/.." && pwd)"
 _capture="${_here}/capture-if-active.sh"
+_settings="${_root}/focus-app-settings.json"
 
 while true; do
   "${_capture}" || true
-  span=$((max - min + 1))
-  wait_sec=$((min + RANDOM % span))
+
+  # Читаем screenshot_interval из JSON (минуты), fallback на env или 2 мин
+  interval_min=2
+  if [[ -f "${_settings}" ]]; then
+    val=$(grep '"screenshot_interval"' "${_settings}" | grep -o '[0-9]*')
+    [[ -n "${val}" ]] && interval_min="${val}"
+  fi
+
+  # Рандом ±30% от интервала
+  base_sec=$((interval_min * 60))
+  jitter=$((base_sec * 30 / 100))
+  min_sec=$((base_sec - jitter))
+  max_sec=$((base_sec + jitter))
+  span=$((max_sec - min_sec + 1))
+  wait_sec=$((min_sec + RANDOM % span))
+
   /bin/sleep "${wait_sec}"
 done
