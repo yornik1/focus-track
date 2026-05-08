@@ -23,20 +23,18 @@ const OLLAMA_HOST =
     : (process.env.OLLAMA_HOST ?? "http://localhost:11434");
 
 async function analyzeScreenshot(imagePath: string) {
-  // Читаем изображение и конвертируем в base64
   const imageBuffer = readFileSync(imagePath);
   const imageBase64 = imageBuffer.toString("base64");
 
-  // Выбираем провайдера
   const provider =
     PROVIDER === "ollama"
       ? new OllamaProvider(OLLAMA_HOST, MODEL)
       : new GeminiProvider(GEMINI_API_KEY, MODEL);
 
-  // Анализируем
   const result = await provider.analyze(imageBase64);
 
-  // Сохраняем в БД
+  const usedModel = provider instanceof GeminiProvider ? provider.usedModel : MODEL;
+
   const now = new Date();
   const datetime = now.toISOString();
   const timestamp = Math.floor(now.getTime() / 1000);
@@ -49,7 +47,7 @@ async function analyzeScreenshot(imagePath: string) {
     summary: result.summary,
   });
 
-  console.log(JSON.stringify({ datetime, ...result }));
+  console.log(JSON.stringify({ datetime, ...result, model: usedModel }));
 }
 
 const imagePath = process.argv[2];
@@ -59,6 +57,11 @@ if (!imagePath) {
 }
 
 analyzeScreenshot(imagePath).catch((err) => {
-  console.error("Error analyzing screenshot:", err);
+  const errorInfo = {
+    provider: PROVIDER,
+    model: MODEL,
+    error: err instanceof Error ? err.message : String(err),
+  };
+  console.error(JSON.stringify(errorInfo));
   process.exit(1);
 });

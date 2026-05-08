@@ -10,9 +10,19 @@ Return JSON:
 - category: short label for the activity. Examples: code, research, design, writing, video, social, gaming, news, shopping, communication. Pick the best fit or invent your own — one word, lowercase.
 - summary: what exactly is on screen, one sentence, max 200 chars`;
 
+const FALLBACK_MODELS = ["gemini-3.1-flash-lite", "gemini-3-flash-preview", "gemini-2.5-flash", "gemini-2.0-flash-lite"];
+
+function isRateLimitError(err: unknown): boolean {
+  if (err instanceof Error) {
+    return err.message.includes("429") || err.message.includes("quota") || err.message.includes("RESOURCE_EXHAUSTED");
+  }
+  return false;
+}
+
 export class GeminiProvider implements LLMProvider {
   private client: GoogleGenerativeAI;
   private model: string;
+  public usedModel: string = "";
 
   constructor(apiKey: string, model: string = "gemini-2.5-flash") {
     this.client = new GoogleGenerativeAI(apiKey);
@@ -20,26 +30,28 @@ export class GeminiProvider implements LLMProvider {
   }
 
   async analyze(imageBase64: string): Promise<AnalysisResult> {
-    const model = this.client.getGenerativeModel({ model: this.model });
+    const modelsToTry = [this.model, ...FALLBACK_MODELS.filter(m => m !== this.model)];
+    let lastError: unknown;
 
-    const result = await model.generateContent([
-      PROMPT,
-      {
-        inlineData: {
-          mimeType: "image/jpeg",
-          data: imageBase64,
-        },
-      },
-    ]);
+    for (const modelId of modelsToTry) {
+      try {
+        const model = this.client.getGenerativeModel({ model: modelId });
+        const result = await model.generateContent([
+          PROMPT,
+          { inlineData: { mimeType: "image/jpeg", data: imageBase64 } },
+        ]);
+        this.usedModel = modelId;
+        return this.parseResponse(result.response.text());
+      } catch (err) {
+        lastError = err;
+        if (!isRateLimitError(err)) throw err;
+      }
+    }
 
-    const text = result.response.text();
-    const parsed = this.parseResponse(text);
-
-    return parsed;
+    throw lastError;
   }
 
   private parseResponse(text: string): AnalysisResult {
-    // Извлечь JSON из markdown code block если есть
     const jsonMatch = text.match(/```json\s*(\{[\s\S]*?\})\s*```/) || text.match(/(\{[\s\S]*?\})/);
     if (!jsonMatch) {
       throw new Error(`Failed to parse Gemini response: ${text}`);

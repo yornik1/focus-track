@@ -52,9 +52,13 @@ fi
 cd "${FOCUS_TRACK_ROOT}"
 FAIL_COUNTER="${DATA_DIR}/.fail-count"
 FAIL_NOTIFY_THRESHOLD=3
+ANALYZE_ERR_FILE="${DATA_DIR}/.last-analyze-error"
 
-pnpm --filter @workspace/scripts run analyze "${final}" >> "${LOG_FILE}" 2>&1
-analyze_exit=$?
+if pnpm --filter @workspace/scripts run analyze "${final}" >> "${LOG_FILE}" 2>"${ANALYZE_ERR_FILE}"; then
+  analyze_exit=0
+else
+  analyze_exit=$?
+fi
 
 if [[ "${analyze_exit}" -ne 0 ]]; then
   # Проверяем что это НЕ сетевая ошибка (curl к google резолвится)
@@ -64,19 +68,35 @@ if [[ "${analyze_exit}" -ne 0 ]]; then
     count=$((count + 1))
     echo "${count}" > "${FAIL_COUNTER}"
 
-    echo "$(date): Анализ провалился (${count}/${FAIL_NOTIFY_THRESHOLD})" >> "${LOG_FILE}"
+    # Парсим JSON из stderr (provider, model, error)
+    err_json=$(tail -1 "${ANALYZE_ERR_FILE}" 2>/dev/null || echo "")
+    err_provider=$(echo "${err_json}" | grep -o '"provider":"[^"]*"' | cut -d'"' -f4 || echo "unknown")
+    err_model=$(echo "${err_json}" | grep -o '"model":"[^"]*"' | cut -d'"' -f4 || echo "unknown")
+    err_msg=$(echo "${err_json}" | grep -o '"error":"[^"]*"' | cut -d'"' -f4 || echo "неизвестная ошибка")
 
-    if [[ "${count}" -eq "${FAIL_NOTIFY_THRESHOLD}" ]]; then
+    echo "$(date): Анализ провалился (${count}/${FAIL_NOTIFY_THRESHOLD}) provider=${err_provider} model=${err_model} error=${err_msg}" >> "${LOG_FILE}"
+
+    LAST_NOTIFY_FILE="${DATA_DIR}/.last-tg-notify"
+    now_ts=$(date +%s)
+    last_notify_ts=$(cat "${LAST_NOTIFY_FILE}" 2>/dev/null || echo 0)
+    notify_cooldown=3600
+
+    if [[ "${count}" -ge "${FAIL_NOTIFY_THRESHOLD}" && $((now_ts - last_notify_ts)) -ge "${notify_cooldown}" ]]; then
       # Отправить в Telegram
       if [[ -f "${FOCUS_TRACK_ROOT}/.env" ]]; then
         TG_BOT_TOKEN=$(grep '^TG_BOT_TOKEN=' "${FOCUS_TRACK_ROOT}/.env" 2>/dev/null | cut -d= -f2- | tr -d '"' | tr -d "'")
         TG_CHAT_ID=$(grep '^TG_CHAT_ID=' "${FOCUS_TRACK_ROOT}/.env" 2>/dev/null | cut -d= -f2- | tr -d '"' | tr -d "'")
 
         if [[ -n "${TG_BOT_TOKEN:-}" && -n "${TG_CHAT_ID:-}" ]]; then
-          msg="⚠️ Focus Tracker: анализ скринов не работает уже ${count} раз подряд. Проверь API key / квоту."
+          msg="⚠️ Focus Tracker: анализ не работает ${count} раз подряд
+
+📡 Провайдер: ${err_provider}
+🤖 Модель: ${err_model}
+❌ Ошибка: ${err_msg}"
           curl -s "https://api.telegram.org/bot${TG_BOT_TOKEN}/sendMessage" \
             -d chat_id="${TG_CHAT_ID}" \
             -d text="${msg}" >> "${LOG_FILE}" 2>&1 || true
+          echo "${now_ts}" > "${LAST_NOTIFY_FILE}"
           echo "$(date): Отправлено уведомление в Telegram" >> "${LOG_FILE}"
         fi
       fi
