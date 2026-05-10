@@ -257,11 +257,12 @@ export async function getWeekLogs(weekStart: string): Promise<LogEntry[]> {
       return d >= startStr && d < endStr;
     });
   }
-  const end = new Date(weekStart);
+  const end = new Date(weekStart + "T00:00:00");
   end.setDate(end.getDate() + 7);
+  const endStr = `${end.getFullYear()}-${String(end.getMonth() + 1).padStart(2, "0")}-${String(end.getDate()).padStart(2, "0")}`;
   const params = new URLSearchParams({
     date_from: weekStart,
-    date_to: end.toISOString().slice(0, 10),
+    date_to: endStr,
   });
   const res = await apiFetch<LogsResponse>(`/api/logs?${params}`);
   return res.entries;

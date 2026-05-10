@@ -14,6 +14,15 @@ PAUSE_FILE="${DATA_DIR}/pause"
 
 /bin/mkdir -p "${CAPTURES_DIR}" "$(dirname "${LOG_FILE}")"
 
+# Проверка: экран заблокирован (крышка закрыта / lock screen)
+if /usr/bin/python3 -c "
+import subprocess,sys
+r=subprocess.run(['/usr/sbin/ioreg','-r','-d','1','-k','CGSSessionScreenIsLocked'],capture_output=True,text=True)
+sys.exit(0 if 'CGSSessionScreenIsLocked' in r.stdout else 1)
+" 2>/dev/null; then
+  exit 0
+fi
+
 # Проверка паузы
 if [[ -f "${PAUSE_FILE}" ]]; then
   PAUSE_UNTIL=$(cat "${PAUSE_FILE}")
