@@ -27,6 +27,7 @@ export default function SettingsPage() {
     screenshot_interval: 2,
     idle_threshold: 120,
     focused_score_threshold: 6,
+    prompt: "",
   });
   const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null);
   const [saved, setSaved] = useState(false);
@@ -170,6 +171,20 @@ export default function SettingsPage() {
               : "Model must be installed in Ollama (e.g., llava:7b, llava:13b)"}
           </p>
         </div>
+      </div>
+
+      <div className="bg-card border border-card-border rounded-xl p-5 space-y-3">
+        <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Analysis Prompt</h2>
+        <textarea
+          value={form.prompt}
+          onChange={(e) => update("prompt", e.target.value)}
+          rows={6}
+          placeholder="Leave empty for default prompt"
+          className="w-full bg-background border border-input rounded-md px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-ring font-mono resize-y placeholder:font-sans placeholder:text-muted-foreground/60"
+        />
+        <p className="text-xs text-muted-foreground">
+          Prompt sent to LLM with each screenshot. Must instruct the model to return JSON with score, category, summary.
+        </p>
       </div>
 
       <div className="bg-card border border-card-border rounded-xl p-5 space-y-5">

@@ -1,15 +1,6 @@
 import { Ollama } from "ollama";
 import type { LLMProvider, AnalysisResult } from "./types";
 
-const PROMPT = `Analyze this screenshot. What is the user doing?
-
-Return JSON:
-{"score": <0-10>, "category": "<string>", "summary": "<one sentence>"}
-
-- score: focus level. 10 = deep productive work, 0 = pure distraction
-- category: short label for the activity. Examples: code, research, design, writing, video, social, gaming, news, shopping, communication. Pick the best fit or invent your own — one word, lowercase.
-- summary: what exactly is on screen, one sentence, max 200 chars`;
-
 export class OllamaProvider implements LLMProvider {
   private client: Ollama;
   private model: string;
@@ -19,10 +10,11 @@ export class OllamaProvider implements LLMProvider {
     this.model = model;
   }
 
-  async analyze(imageBase64: string): Promise<AnalysisResult> {
+  async analyze(imageBase64: string, prompt?: string): Promise<AnalysisResult> {
+    const text = prompt ?? "";
     const response = await this.client.generate({
       model: this.model,
-      prompt: PROMPT,
+      prompt: text,
       images: [imageBase64],
       stream: false,
     });

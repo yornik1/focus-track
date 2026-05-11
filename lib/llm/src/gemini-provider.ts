@@ -1,15 +1,6 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import type { LLMProvider, AnalysisResult } from "./types";
 
-const PROMPT = `Analyze this screenshot. What is the user doing?
-
-Return JSON:
-{"score": <0-10>, "category": "<string>", "summary": "<one sentence>"}
-
-- score: focus level. 10 = deep productive work, 0 = pure distraction
-- category: short label for the activity. Examples: code, research, design, writing, video, social, gaming, news, shopping, communication. Pick the best fit or invent your own — one word, lowercase.
-- summary: what exactly is on screen, one sentence, max 200 chars`;
-
 const FALLBACK_MODELS = ["gemini-3.1-flash-lite", "gemini-3-flash-preview", "gemini-2.5-flash", "gemini-2.0-flash-lite"];
 
 function isRateLimitError(err: unknown): boolean {
@@ -29,7 +20,8 @@ export class GeminiProvider implements LLMProvider {
     this.model = model;
   }
 
-  async analyze(imageBase64: string): Promise<AnalysisResult> {
+  async analyze(imageBase64: string, prompt?: string): Promise<AnalysisResult> {
+    const text = prompt ?? "";
     const modelsToTry = [this.model, ...FALLBACK_MODELS.filter(m => m !== this.model)];
     let lastError: unknown;
 
@@ -37,7 +29,7 @@ export class GeminiProvider implements LLMProvider {
       try {
         const model = this.client.getGenerativeModel({ model: modelId });
         const result = await model.generateContent([
-          PROMPT,
+          text,
           { inlineData: { mimeType: "image/jpeg", data: imageBase64 } },
         ]);
         this.usedModel = modelId;

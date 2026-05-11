@@ -60,6 +60,7 @@ export interface Settings {
   screenshot_interval: 1 | 2 | 5 | 10;
   idle_threshold: number;
   focused_score_threshold: number;
+  prompt: string;
 }
 
 export interface Status {
@@ -175,6 +176,7 @@ const MOCK_SETTINGS: Settings = {
   screenshot_interval: 2,
   idle_threshold: 120,
   focused_score_threshold: 6,
+  prompt: "",
 };
 
 const MOCK_STATUS: Status = {

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import "dotenv/config";
 import { readFileSync } from "fs";
-import { db, focusLogTable, readAppSettings } from "@workspace/db";
+import { db, focusLogTable, readAppSettings, DEFAULT_PROMPT } from "@workspace/db";
 import { GeminiProvider, OllamaProvider } from "@workspace/llm";
 
 const stored = readAppSettings();
@@ -12,6 +12,7 @@ const PROVIDER = fromFile
   : ((process.env.FOCUS_PROVIDER || "gemini") as "gemini" | "ollama");
 const trimmedToken = fromFile ? stored.token.trim() : "";
 const MODEL = fromFile && stored.model ? stored.model : (PROVIDER === "ollama" ? "llava:7b" : "gemini-2.5-flash");
+const PROMPT = fromFile ? stored.prompt : DEFAULT_PROMPT;
 
 const GEMINI_API_KEY =
   PROVIDER === "gemini"
@@ -31,7 +32,7 @@ async function analyzeScreenshot(imagePath: string) {
       ? new OllamaProvider(OLLAMA_HOST, MODEL)
       : new GeminiProvider(GEMINI_API_KEY, MODEL);
 
-  const result = await provider.analyze(imageBase64);
+  const result = await provider.analyze(imageBase64, PROMPT);
 
   const usedModel = provider instanceof GeminiProvider ? provider.usedModel : MODEL;
 

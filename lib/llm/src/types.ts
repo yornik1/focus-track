@@ -7,5 +7,5 @@ export interface AnalysisResult {
 }
 
 export interface LLMProvider {
-  analyze(imageBase64: string): Promise<AnalysisResult>;
+  analyze(imageBase64: string, prompt?: string): Promise<AnalysisResult>;
 }

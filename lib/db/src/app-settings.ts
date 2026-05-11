@@ -10,11 +10,21 @@ export interface AppSettings {
   screenshot_interval: 1 | 2 | 5 | 10;
   idle_threshold: number;
   focused_score_threshold: number;
+  prompt: string;
 }
 
 const SETTINGS_FILENAME = "focus-app-settings.json";
 
 const ALLOWED_INTERVALS = new Set<AppSettings["screenshot_interval"]>([1, 2, 5, 10]);
+
+export const DEFAULT_PROMPT = `Analyze this screenshot. What is the user doing?
+
+Return JSON:
+{"score": <0-10>, "category": "<string>", "summary": "<one sentence>"}
+
+- score: focus level. 10 = deep productive work, 0 = pure distraction
+- category: short label for the activity. Examples: code, research, design, writing, video, social, gaming, news, shopping, communication. Pick the best fit or invent your own — one word, lowercase.
+- summary: what exactly is on screen, one sentence, max 200 chars`;
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -48,6 +58,7 @@ export function getDefaultAppSettings(): AppSettings {
     screenshot_interval: 2,
     idle_threshold: 60,
     focused_score_threshold: 7,
+    prompt: DEFAULT_PROMPT,
   };
 }
 
@@ -84,6 +95,7 @@ function normalizeStoredSettings(parsed: unknown): AppSettings | null {
   const idle_threshold = typeof o.idle_threshold === "number" ? o.idle_threshold : 60;
   const focused_score_threshold =
     typeof o.focused_score_threshold === "number" ? o.focused_score_threshold : 7;
+  const prompt = typeof o.prompt === "string" && o.prompt.trim() ? o.prompt : DEFAULT_PROMPT;
   return {
     provider,
     token,
@@ -91,6 +103,7 @@ function normalizeStoredSettings(parsed: unknown): AppSettings | null {
     screenshot_interval,
     idle_threshold,
     focused_score_threshold,
+    prompt,
   };
 }
 
@@ -118,6 +131,7 @@ export function normalizeSettingsPayload(body: unknown): AppSettings {
   if (!Number.isFinite(focused) || focused < 1 || focused > 10) {
     throw new Error("focused_score_threshold must be between 1 and 10");
   }
+  const prompt = typeof b.prompt === "string" && b.prompt.trim() ? b.prompt : DEFAULT_PROMPT;
   return {
     provider,
     token,
@@ -125,6 +139,7 @@ export function normalizeSettingsPayload(body: unknown): AppSettings {
     screenshot_interval: si as AppSettings["screenshot_interval"],
     idle_threshold: Math.round(idle),
     focused_score_threshold: Math.round(focused),
+    prompt,
   };
 }
 
