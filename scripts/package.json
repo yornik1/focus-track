@@ -6,9 +6,11 @@
   "scripts": {
     "hello": "tsx ./src/hello.ts",
     "analyze": "tsx ./src/analyze-screenshot.ts",
+    "categories:migrate": "tsx ./src/migrate-categories.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
+    "@workspace/categories": "workspace:*",
     "@workspace/db": "workspace:*",
     "@workspace/llm": "workspace:*",
     "dotenv": "^17.4.2"

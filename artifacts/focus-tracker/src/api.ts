@@ -51,6 +51,8 @@ export interface LogsFilter {
   category?: Category;
   min_score?: number;
   max_score?: number;
+  limit?: number;
+  offset?: number;
 }
 
 export interface Settings {
@@ -61,6 +63,11 @@ export interface Settings {
   idle_threshold: number;
   focused_score_threshold: number;
   prompt: string;
+}
+
+export interface SettingsResponse extends Settings {
+  allowed_categories: string[];
+  default_prompt: string;
 }
 
 export interface Status {
@@ -169,7 +176,7 @@ const MOCK_TODAY: TodayStats = {
   total_screenshots: 62,
 };
 
-const MOCK_SETTINGS: Settings = {
+const MOCK_SETTINGS: SettingsResponse = {
   provider: "gemini",
   token: "AIza••••••••••••••••",
   model: "gemini-2.5-flash",
@@ -177,6 +184,18 @@ const MOCK_SETTINGS: Settings = {
   idle_threshold: 120,
   focused_score_threshold: 6,
   prompt: "",
+  allowed_categories: [
+    "code",
+    "research",
+    "design",
+    "writing",
+    "video",
+    "social",
+    "gaming",
+    "news",
+    "communication",
+  ],
+  default_prompt: "",
 };
 
 const MOCK_STATUS: Status = {
@@ -260,11 +279,12 @@ export async function getWeekLogs(weekStart: string): Promise<LogEntry[]> {
     });
   }
   const end = new Date(weekStart + "T00:00:00");
-  end.setDate(end.getDate() + 7);
+  end.setDate(end.getDate() + 6); // воскресенье (последний день недели)
   const endStr = `${end.getFullYear()}-${String(end.getMonth() + 1).padStart(2, "0")}-${String(end.getDate()).padStart(2, "0")}`;
   const params = new URLSearchParams({
     date_from: weekStart,
     date_to: endStr,
+    limit: "5000",
   });
   const res = await apiFetch<LogsResponse>(`/api/logs?${params}`);
   return res.entries;
@@ -298,6 +318,8 @@ export async function getLogs(filter: LogsFilter = {}): Promise<LogsResponse> {
   if (filter.category) params.set("category", filter.category);
   if (filter.min_score !== undefined) params.set("min_score", String(filter.min_score));
   if (filter.max_score !== undefined) params.set("max_score", String(filter.max_score));
+  if (filter.limit !== undefined) params.set("limit", String(filter.limit));
+  if (filter.offset !== undefined) params.set("offset", String(filter.offset));
   return apiFetch<LogsResponse>(`/api/logs?${params}`);
 }
 
@@ -323,20 +345,48 @@ export async function deleteLog(id: string): Promise<void> {
   await apiFetch<void>(`/api/logs/${id}`, { method: "DELETE" });
 }
 
-export async function getSettings(): Promise<Settings> {
+export async function getSettings(): Promise<SettingsResponse> {
   if (USE_MOCK) return { ...MOCK_SETTINGS };
-  return apiFetch<Settings>("/api/settings");
+  return apiFetch<SettingsResponse>("/api/settings");
 }
 
-export async function saveSettings(data: Settings): Promise<Settings> {
+export async function saveSettings(data: Settings): Promise<SettingsResponse> {
   if (USE_MOCK) {
     Object.assign(MOCK_SETTINGS, data);
     return { ...MOCK_SETTINGS };
   }
-  return apiFetch<Settings>("/api/settings", {
+  return apiFetch<SettingsResponse>("/api/settings", {
     method: "POST",
     body: JSON.stringify(data),
   });
+}
+
+export interface GeminiModelOption {
+  id: string;
+  displayName: string;
+}
+
+export async function fetchGeminiModels(token: string): Promise<GeminiModelOption[]> {
+  if (USE_MOCK) {
+    return [
+      { id: "gemini-2.5-flash", displayName: "Gemini 2.5 Flash" },
+      { id: "gemini-2.0-flash-exp", displayName: "Gemini 2.0 Flash Experimental" },
+    ];
+  }
+  const params = new URLSearchParams({ token });
+  const res = await fetch(`${BASE_URL}/api/settings/gemini-models?${params}`);
+  if (!res.ok) {
+    let message = `API error: ${res.status}`;
+    try {
+      const j = (await res.json()) as { message?: string };
+      if (j.message) message = j.message;
+    } catch {
+      // ignore
+    }
+    throw new Error(message);
+  }
+  const data = (await res.json()) as { models: GeminiModelOption[] };
+  return data.models;
 }
 
 export async function testSettings(provider: string, token: string, model: string): Promise<{ success: boolean; message: string }> {

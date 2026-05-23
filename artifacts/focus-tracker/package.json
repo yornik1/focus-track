@@ -7,7 +7,8 @@
     "dev": "vite --config vite.config.ts --host 0.0.0.0",
     "build": "vite build --config vite.config.ts",
     "serve": "vite preview --config vite.config.ts --host 0.0.0.0",
-    "typecheck": "tsc -p tsconfig.json --noEmit"
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "node --import tsx --test src/lib/calendar-layout.test.ts"
   },
   "devDependencies": {
     "@hookform/resolvers": "^3.10.0",
@@ -45,6 +46,7 @@
     "@types/react": "catalog:",
     "@types/react-dom": "catalog:",
     "@vitejs/plugin-react": "catalog:",
+    "tsx": "catalog:",
     "@workspace/api-client-react": "workspace:*",
     "class-variance-authority": "catalog:",
     "clsx": "catalog:",
@@ -72,6 +74,7 @@
     "zod": "catalog:"
   },
   "dependencies": {
+    "@workspace/categories": "workspace:*",
     "@rollup/rollup-darwin-arm64": "^4.60.3",
     "lightningcss-darwin-arm64": "^1.32.0"
   }

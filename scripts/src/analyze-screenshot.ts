@@ -1,7 +1,14 @@
 #!/usr/bin/env node
 import "dotenv/config";
 import { readFileSync } from "fs";
-import { db, focusLogTable, readAppSettings, DEFAULT_PROMPT } from "@workspace/db";
+import {
+  db,
+  focusLogTable,
+  readAppSettings,
+  DEFAULT_PROMPT,
+  getTopCategoriesFromLogs,
+} from "@workspace/db";
+import { buildAnalysisPrompt, normalizeCategory } from "@workspace/categories";
 import { GeminiProvider, OllamaProvider } from "@workspace/llm";
 
 const stored = readAppSettings();
@@ -12,7 +19,7 @@ const PROVIDER = fromFile
   : ((process.env.FOCUS_PROVIDER || "gemini") as "gemini" | "ollama");
 const trimmedToken = fromFile ? stored.token.trim() : "";
 const MODEL = fromFile && stored.model ? stored.model : (PROVIDER === "ollama" ? "llava:7b" : "gemini-2.5-flash");
-const PROMPT = fromFile ? stored.prompt : DEFAULT_PROMPT;
+const BASE_PROMPT = fromFile ? stored.prompt : DEFAULT_PROMPT;
 
 const GEMINI_API_KEY =
   PROVIDER === "gemini"
@@ -32,7 +39,10 @@ async function analyzeScreenshot(imagePath: string) {
       ? new OllamaProvider(OLLAMA_HOST, MODEL)
       : new GeminiProvider(GEMINI_API_KEY, MODEL);
 
-  const result = await provider.analyze(imageBase64, PROMPT);
+  const frequent = await getTopCategoriesFromLogs(5, 30);
+  const prompt = buildAnalysisPrompt(BASE_PROMPT, frequent);
+  const result = await provider.analyze(imageBase64, prompt);
+  const category = normalizeCategory(result.category);
 
   const usedModel = provider instanceof GeminiProvider ? provider.usedModel : MODEL;
 
@@ -43,12 +53,12 @@ async function analyzeScreenshot(imagePath: string) {
   await db.insert(focusLogTable).values({
     datetime,
     timestamp,
-    category: result.category,
+    category,
     focus_score: result.score,
     summary: result.summary,
   });
 
-  console.log(JSON.stringify({ datetime, ...result, model: usedModel }));
+  console.log(JSON.stringify({ datetime, ...result, category, model: usedModel }));
 }
 
 const imagePath = process.argv[2];

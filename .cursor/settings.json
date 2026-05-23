@@ -6,5 +6,6 @@
     "notion-workspace": {
       "enabled": true
     }
-  }
+  },
+  "terminal.integrated.gpuAcceleration": "off"
 }

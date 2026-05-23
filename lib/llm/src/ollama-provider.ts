@@ -1,4 +1,5 @@
 import { Ollama } from "ollama";
+import { normalizeCategory } from "@workspace/categories";
 import type { LLMProvider, AnalysisResult } from "./types";
 
 export class OllamaProvider implements LLMProvider {
@@ -34,7 +35,7 @@ export class OllamaProvider implements LLMProvider {
 
     return {
       score: Math.max(0, Math.min(10, Number(json.score))),
-      category: String(json.category).toLowerCase().slice(0, 30),
+      category: normalizeCategory(String(json.category)),
       summary: String(json.summary).slice(0, 200),
     };
   }

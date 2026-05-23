@@ -1,4 +1,5 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
+import { normalizeCategory } from "@workspace/categories";
 import type { LLMProvider, AnalysisResult } from "./types";
 
 const FALLBACK_MODELS = ["gemini-3.1-flash-lite", "gemini-3-flash-preview", "gemini-2.5-flash", "gemini-2.0-flash-lite"];
@@ -53,7 +54,7 @@ export class GeminiProvider implements LLMProvider {
 
     return {
       score: Math.max(0, Math.min(10, Number(json.score))),
-      category: String(json.category).toLowerCase().slice(0, 30),
+      category: normalizeCategory(String(json.category)),
       summary: String(json.summary).slice(0, 200),
     };
   }

@@ -1,11 +1,19 @@
 import { useState, useRef, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { getWeekLogs, type LogEntry, type Category } from "@/api";
+import { getWeekLogs, type LogEntry } from "@/api";
+import { ALLOWED_CATEGORIES } from "@workspace/categories";
+import {
+  prepareDayLayout,
+  type LayoutSegment,
+  type Segment,
+} from "@/lib/calendar-layout";
 
 const HOUR_HEIGHT = 64;
 const START_HOUR = 7;
 const END_HOUR = 21;
-const SCREENSHOT_INTERVAL_MIN = 5;
+const MIN_HEIGHT_SINGLE = 8;
+const MIN_HEIGHT_MULTI = 4;
+const COLUMN_GAP_PX = 2;
 
 const CAT_COLORS: Record<string, { bg: string; border: string; text: string }> = {
   code:          { bg: "rgba(59,130,246,0.18)",  border: "#3b82f6", text: "#93c5fd" },
@@ -21,15 +29,6 @@ const CAT_COLORS: Record<string, { bg: string; border: string; text: string }> =
 const DEFAULT_CAT_COLOR = { bg: "rgba(107,114,128,0.12)", border: "#6b7280", text: "#9ca3af" };
 
 const DAY_NAMES = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
-
-interface Segment {
-  start: Date;
-  end: Date;
-  category: Category;
-  avg_score: number;
-  count: number;
-  summary: string;
-}
 
 function getMonday(date: Date): Date {
   const d = new Date(date);
@@ -53,45 +52,6 @@ function isoDate(date: Date): string {
   return `${y}-${m}-${d}`;
 }
 
-function groupIntoSegments(entries: LogEntry[]): Segment[] {
-  if (entries.length === 0) return [];
-  const sorted = [...entries].sort(
-    (a, b) => new Date(a.datetime).getTime() - new Date(b.datetime).getTime()
-  );
-  const gap = SCREENSHOT_INTERVAL_MIN * 60_000;
-  const segments: Segment[] = [];
-  let cur: Segment = {
-    start: new Date(sorted[0].datetime),
-    end: new Date(new Date(sorted[0].datetime).getTime() + gap),
-    category: sorted[0].category,
-    avg_score: sorted[0].score,
-    count: 1,
-    summary: sorted[0].summary,
-  };
-  for (let i = 1; i < sorted.length; i++) {
-    const e = sorted[i];
-    const t = new Date(e.datetime).getTime();
-    const gapMs = t - cur.end.getTime();
-    if (gapMs <= gap && e.category === cur.category) {
-      cur.end = new Date(t + gap);
-      cur.avg_score = (cur.avg_score * cur.count + e.score) / (cur.count + 1);
-      cur.count++;
-    } else {
-      segments.push(cur);
-      cur = {
-        start: new Date(e.datetime),
-        end: new Date(t + gap),
-        category: e.category,
-        avg_score: e.score,
-        count: 1,
-        summary: e.summary,
-      };
-    }
-  }
-  segments.push(cur);
-  return segments;
-}
-
 function timeToY(date: Date): number {
   const h = date.getHours() + date.getMinutes() / 60;
   return (h - START_HOUR) * HOUR_HEIGHT;
@@ -105,7 +65,7 @@ function scoreColor(score: number): string {
 
 function formatRange(start: Date, end: Date): string {
   const fmt = (d: Date) =>
-    d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+    d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: false });
   return `${fmt(start)} – ${fmt(end)}`;
 }
 
@@ -115,6 +75,40 @@ function formatWeekLabel(monday: Date): string {
   const m = monday.toLocaleDateString([], opts);
   const s = sunday.toLocaleDateString([], { month: "short", day: "numeric", year: "numeric" });
   return `${m} – ${s}`;
+}
+
+function formatCategoryFlow(categories: string[]): string {
+  return categories
+    .map((c) => c.charAt(0).toUpperCase() + c.slice(1))
+    .join(" → ");
+}
+
+function segmentDurationPx(seg: Segment): number {
+  return ((seg.end.getTime() - seg.start.getTime()) / 3_600_000) * HOUR_HEIGHT;
+}
+
+function segmentLayoutStyle(seg: LayoutSegment): {
+  top: number;
+  height: number;
+  left: string;
+  width: string;
+} {
+  const top = timeToY(seg.start);
+  const minH = seg.columns === 1 ? MIN_HEIGHT_SINGLE : MIN_HEIGHT_MULTI;
+  const height = Math.max(segmentDurationPx(seg), minH);
+  const clippedTop = Math.max(top, 0);
+  const clippedHeight = Math.min(
+    height - (clippedTop - top),
+    (END_HOUR - START_HOUR) * HOUR_HEIGHT - clippedTop,
+  );
+  const colWidthPct = 100 / seg.columns;
+  const leftPct = seg.column * colWidthPct;
+  return {
+    top: clippedTop,
+    height: clippedHeight,
+    left: `calc(${leftPct}% + ${COLUMN_GAP_PX / 2}px)`,
+    width: `calc(${colWidthPct}% - ${COLUMN_GAP_PX}px)`,
+  };
 }
 
 function CurrentTimeLine() {
@@ -133,7 +127,7 @@ function CurrentTimeLine() {
 }
 
 interface TooltipData {
-  segment: Segment;
+  segment: LayoutSegment;
   x: number;
   y: number;
 }
@@ -154,11 +148,11 @@ export default function CalendarPage() {
   const days = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i));
   const hours = Array.from({ length: END_HOUR - START_HOUR }, (_, i) => START_HOUR + i);
 
-  const segmentsByDay = new Map<string, Segment[]>();
+  const segmentsByDay = new Map<string, LayoutSegment[]>();
   days.forEach((d) => {
     const dateStr = isoDate(d);
     const dayEntries = entries.filter((e) => isoDate(new Date(e.datetime)) === dateStr);
-    segmentsByDay.set(dateStr, groupIntoSegments(dayEntries));
+    segmentsByDay.set(dateStr, prepareDayLayout(dayEntries));
   });
 
   const prevWeek = () => setWeekStart((d) => addDays(d, -7));
@@ -267,7 +261,7 @@ export default function CalendarPage() {
                   className="absolute right-2 text-[10px] text-muted-foreground tabular-nums"
                   style={{ top: (h - START_HOUR) * HOUR_HEIGHT - 6 }}
                 >
-                  {h === 12 ? "12pm" : h < 12 ? `${h}am` : `${h - 12}pm`}
+                  {String(h).padStart(2, "0")}:00
                 </div>
               ))}
             </div>
@@ -294,34 +288,33 @@ export default function CalendarPage() {
                   {isToday && <CurrentTimeLine />}
 
                   {segs.map((seg, si) => {
-                    const top = timeToY(seg.start);
-                    const height = Math.max(
-                      (seg.end.getTime() - seg.start.getTime()) / 3_600_000 * HOUR_HEIGHT,
-                      22
-                    );
-                    const clippedTop = Math.max(top, 0);
-                    const clippedHeight = Math.min(height - (clippedTop - top), (END_HOUR - START_HOUR) * HOUR_HEIGHT - clippedTop);
-                    if (clippedHeight <= 0) return null;
+                    const layout = segmentLayoutStyle(seg);
+                    if (layout.height <= 0) return null;
                     const colors = CAT_COLORS[seg.category] ?? DEFAULT_CAT_COLOR;
-                    const showLabel = clippedHeight > 20;
-                    const showScore = clippedHeight > 34;
+                    const showLabel = layout.height > 18 && seg.columns === 1;
+                    const showScore = layout.height > 28 && seg.columns === 1;
+                    const showDenseBadge = seg.count > 3 && seg.columns >= 3 && !showLabel;
+                    const faded = seg.columns > 3;
 
                     return (
                       <div
                         key={si}
-                        className="absolute left-0.5 right-0.5 rounded overflow-hidden cursor-pointer transition-opacity hover:opacity-90 z-10"
+                        className="absolute rounded overflow-hidden cursor-pointer transition-opacity hover:opacity-100 hover:z-20 z-10"
                         style={{
-                          top: clippedTop + 1,
-                          height: clippedHeight - 2,
+                          top: layout.top + 1,
+                          height: Math.max(layout.height - 2, MIN_HEIGHT_MULTI),
+                          left: layout.left,
+                          width: layout.width,
                           backgroundColor: colors.bg,
                           borderLeft: `2px solid ${colors.border}`,
+                          opacity: faded ? 0.85 : 1,
                         }}
                         onClick={(e) => {
                           e.stopPropagation();
                           const rect = (e.currentTarget as HTMLElement)
                             .closest(".flex-1")!
                             .getBoundingClientRect();
-                          setTooltip({ segment: seg, x: rect.left, y: rect.top + clippedTop });
+                          setTooltip({ segment: seg, x: rect.left, y: rect.top + layout.top });
                         }}
                       >
                         {showLabel && (
@@ -337,6 +330,14 @@ export default function CalendarPage() {
                                 {seg.avg_score.toFixed(1)}
                               </div>
                             )}
+                          </div>
+                        )}
+                        {showDenseBadge && (
+                          <div
+                            className="absolute inset-0 flex items-center justify-center text-[9px] font-bold tabular-nums"
+                            style={{ color: colors.text }}
+                          >
+                            +{seg.count}
                           </div>
                         )}
                       </div>
@@ -357,9 +358,9 @@ export default function CalendarPage() {
             top: Math.min(tooltip.y - 8, window.innerHeight - 180),
           }}
         >
-          <div className="flex items-center justify-between mb-2">
+          <div className="flex items-center justify-between mb-2 gap-2">
             <span
-              className="text-xs font-semibold px-2 py-0.5 rounded"
+              className="text-xs font-semibold px-2 py-0.5 rounded shrink-0"
               style={{
                 backgroundColor: (CAT_COLORS[tooltip.segment.category] ?? DEFAULT_CAT_COLOR).bg,
                 color: (CAT_COLORS[tooltip.segment.category] ?? DEFAULT_CAT_COLOR).text,
@@ -369,12 +370,17 @@ export default function CalendarPage() {
               {tooltip.segment.category}
             </span>
             <span
-              className="text-sm font-bold tabular-nums"
+              className="text-sm font-bold tabular-nums shrink-0"
               style={{ color: scoreColor(tooltip.segment.avg_score) }}
             >
               {tooltip.segment.avg_score.toFixed(1)} / 10
             </span>
           </div>
+          {tooltip.segment.categories.length > 1 && (
+            <div className="text-[10px] text-muted-foreground mb-1.5">
+              {formatCategoryFlow(tooltip.segment.categories)}
+            </div>
+          )}
           <div className="text-xs text-muted-foreground mb-1">
             {formatRange(tooltip.segment.start, tooltip.segment.end)}
             <span className="ml-2">
@@ -384,12 +390,14 @@ export default function CalendarPage() {
           <div className="text-xs text-foreground/80 mt-1.5 leading-relaxed line-clamp-3">
             {tooltip.segment.summary}
           </div>
-          <div className="text-[10px] text-muted-foreground mt-2">{tooltip.segment.count} screenshot{tooltip.segment.count !== 1 ? "s" : ""}</div>
+          <div className="text-[10px] text-muted-foreground mt-2">
+            {tooltip.segment.count} screenshot{tooltip.segment.count !== 1 ? "s" : ""}
+          </div>
         </div>
       )}
 
       <div className="flex items-center gap-4 shrink-0 pt-1 flex-wrap">
-        {Object.keys(CAT_COLORS).map((cat) => (
+        {ALLOWED_CATEGORIES.map((cat) => (
           <div key={cat} className="flex items-center gap-1.5">
             <div
               className="w-3 h-3 rounded-sm"

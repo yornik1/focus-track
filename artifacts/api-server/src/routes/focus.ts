@@ -6,18 +6,28 @@ import {
   getDefaultAppSettings,
   writeAppSettings,
   normalizeSettingsPayload,
+  DEFAULT_PROMPT,
+  ALLOWED_CATEGORIES,
 } from "@workspace/db";
 import { eq, gte, lte, and, sql, desc } from "drizzle-orm";
 import { testLlmConnection } from "../llm-connection-test";
+import { listGeminiModels } from "../gemini-models";
 import * as fs from "fs";
 import * as path from "path";
 
 const router = Router();
 
+function localDateStr(date: Date): string {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, "0");
+  const d = String(date.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+}
+
 // GET /api/stats/today
 router.get("/stats/today", async (req, res) => {
-  const today = new Date().toISOString().split("T")[0];
-  const todayStart = new Date(today).getTime() / 1000;
+  const now = new Date();
+  const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime() / 1000;
   const todayEnd = todayStart + 86400;
 
   const logs = await db
@@ -104,7 +114,7 @@ router.get("/stats/calendar", async (req, res) => {
 
   const dayMap = new Map<string, number[]>();
   for (const log of logs) {
-    const date = new Date(log.timestamp * 1000).toISOString().split("T")[0];
+    const date = localDateStr(new Date(log.timestamp * 1000));
     if (!dayMap.has(date)) {
       dayMap.set(date, []);
     }
@@ -224,7 +234,7 @@ router.get("/stats/streak", async (req, res) => {
     d.setDate(d.getDate() - i);
     const dow = d.getDay();
     if (dow === 0 || dow === 6) continue; // пропускаем выходные
-    const dateStr = d.toISOString().slice(0, 10);
+    const dateStr = localDateStr(d);
     // Сегодня ещё нет данных — пропускаем, не ломаем streak
     if (i === 0 && !byDate.has(dateStr)) continue;
     if (focusedDates.has(dateStr)) {
@@ -277,7 +287,7 @@ router.get("/stats/streak", async (req, res) => {
   for (let i = 6; i >= 0; i--) {
     const d = new Date(today);
     d.setDate(d.getDate() - i);
-    const dateStr = d.toISOString().slice(0, 10);
+    const dateStr = localDateStr(d);
     const scores = byDate.get(dateStr);
     const avg = scores ? scores.reduce((a, b) => a + b, 0) / scores.length : null;
     last7days.push({
@@ -325,10 +335,18 @@ router.post("/pause", async (req, res) => {
   });
 });
 
+function settingsResponse() {
+  const stored = readAppSettings() ?? getDefaultAppSettings();
+  return {
+    ...stored,
+    allowed_categories: [...ALLOWED_CATEGORIES],
+    default_prompt: DEFAULT_PROMPT,
+  };
+}
+
 // GET /api/settings
 router.get("/settings", (req, res) => {
-  const stored = readAppSettings();
-  res.json(stored ?? getDefaultAppSettings());
+  res.json(settingsResponse());
 });
 
 // POST /api/settings
@@ -336,10 +354,35 @@ router.post("/settings", (req, res) => {
   try {
     const settings = normalizeSettingsPayload(req.body);
     writeAppSettings(settings);
-    res.json(settings);
+    res.json({
+      ...settings,
+      allowed_categories: [...ALLOWED_CATEGORIES],
+      default_prompt: DEFAULT_PROMPT,
+    });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Invalid settings";
     res.status(400).json({ success: false, message });
+  }
+});
+
+// GET /api/settings/gemini-models?token=...
+router.get("/settings/gemini-models", async (req, res) => {
+  const fromQuery = req.query.token != null ? String(req.query.token).trim() : "";
+  const stored = readAppSettings();
+  const token =
+    fromQuery ||
+    (stored?.provider === "gemini" ? stored.token.trim() : "");
+
+  if (!token) {
+    return res.status(400).json({ success: false, message: "Gemini API token is required" });
+  }
+
+  try {
+    const models = await listGeminiModels(token);
+    return res.json({ models });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Failed to list models";
+    return res.status(502).json({ success: false, message });
   }
 });
 

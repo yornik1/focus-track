@@ -1,6 +1,7 @@
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { buildCategoryPromptSection } from "@workspace/categories";
 
 /** Настройки UI/захвата, синхронные с дашбордом; `token` для Gemini — ключ, для Ollama — base URL. */
 export interface AppSettings {
@@ -17,14 +18,15 @@ const SETTINGS_FILENAME = "focus-app-settings.json";
 
 const ALLOWED_INTERVALS = new Set<AppSettings["screenshot_interval"]>([1, 2, 5, 10]);
 
-export const DEFAULT_PROMPT = `Analyze this screenshot. What is the user doing?
+const ANALYSIS_PROMPT_HEADER = `Analyze this screenshot. What is the user doing?
 
 Return JSON:
 {"score": <0-10>, "category": "<string>", "summary": "<one sentence>"}
 
 - score: focus level. 10 = deep productive work, 0 = pure distraction
-- category: short label for the activity. Examples: code, research, design, writing, video, social, gaming, news, shopping, communication. Pick the best fit or invent your own — one word, lowercase.
 - summary: what exactly is on screen, one sentence, max 200 chars`;
+
+export const DEFAULT_PROMPT = `${ANALYSIS_PROMPT_HEADER}\n\n${buildCategoryPromptSection()}`;
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 

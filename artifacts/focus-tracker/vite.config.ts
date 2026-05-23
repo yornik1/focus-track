@@ -11,6 +11,7 @@ export default defineConfig({
   resolve: {
     alias: {
       "@": path.resolve(import.meta.dirname, "src"),
+      "@workspace/categories": path.resolve(import.meta.dirname, "../../lib/categories/src/index.ts"),
     },
     dedupe: ["react", "react-dom"],
   },

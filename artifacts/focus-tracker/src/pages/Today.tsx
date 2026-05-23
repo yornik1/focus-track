@@ -35,7 +35,7 @@ function categoryBadgeClass(cat: Category): string {
 
 function formatTime(iso: string): string {
   const d = new Date(iso);
-  return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: false });
 }
 
 function formatDuration(minutes: number): string {
@@ -194,7 +194,7 @@ function Sparkline({ days }: { days: StreakData["last7days"] }) {
 function StreakCard({ data }: { data: StreakData }) {
   const THRESHOLD = 6;
   const days = data.last7days;
-  const dayLabels = ["M", "T", "W", "T", "F", "M", "T"];
+  const dayLabels = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
   return (
     <div className="bg-card border border-card-border rounded-xl p-5 flex items-center gap-6">
@@ -222,6 +222,7 @@ function StreakCard({ data }: { data: StreakData }) {
             const focused = s !== null && s >= THRESHOLD;
             const color = s === null ? "#1e2535" : s >= 7 ? "#22c55e" : s >= 4 ? "#f59e0b" : "#ef4444";
             const isToday = i === days.length - 1;
+            const dayOfWeek = new Date(d.date).getDay();
             return (
               <div key={i} className="flex flex-col items-center gap-1 flex-1">
                 <div
@@ -236,7 +237,7 @@ function StreakCard({ data }: { data: StreakData }) {
                   title={s !== null ? `${d.date}: ${s.toFixed(1)}` : d.date}
                 />
                 <span className={`text-[10px] tabular-nums ${isToday ? "text-foreground font-semibold" : "text-muted-foreground"}`}>
-                  {dayLabels[i]}
+                  {dayLabels[dayOfWeek]}
                 </span>
               </div>
             );

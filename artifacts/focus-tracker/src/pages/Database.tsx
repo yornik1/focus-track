@@ -27,6 +27,7 @@ function formatDatetime(iso: string): string {
   return d.toLocaleString([], {
     month: "short", day: "numeric",
     hour: "2-digit", minute: "2-digit",
+    hour12: false,
   });
 }
 
@@ -50,8 +51,8 @@ export default function DatabasePage() {
   const PAGE_SIZE = 20;
 
   const { data, isLoading } = useQuery({
-    queryKey: ["logs", filter],
-    queryFn: () => getLogs(filter),
+    queryKey: ["logs", filter, page],
+    queryFn: () => getLogs({ ...filter, limit: PAGE_SIZE, offset: page * PAGE_SIZE }),
     keepPreviousData: true,
   } as any);
 
@@ -88,9 +89,8 @@ export default function DatabasePage() {
 
   const entries: LogEntry[] = (data as any)?.entries ?? [];
   const total: number = (data as any)?.total ?? 0;
-  const uniqueCategories = [...new Set(entries.map((e) => e.category))].sort();
-  const pageEntries = entries.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
-  const totalPages = Math.ceil(entries.length / PAGE_SIZE);
+  const ALL_CATEGORIES = ["code", "video", "social", "research", "communication", "gaming", "news", "idle"];
+  const totalPages = Math.ceil(total / PAGE_SIZE);
 
   const handleEditCommit = (entry: LogEntry) => {
     if (!editState) return;
@@ -140,7 +140,7 @@ export default function DatabasePage() {
               className="bg-background border border-input rounded-md px-3 py-1.5 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-ring"
             >
               <option value="">All</option>
-              {uniqueCategories.map((c) => (
+              {ALL_CATEGORIES.map((c) => (
                 <option key={c} value={c}>{c.charAt(0).toUpperCase() + c.slice(1)}</option>
               ))}
             </select>
@@ -206,7 +206,7 @@ export default function DatabasePage() {
                 </tr>
               </thead>
               <tbody>
-                {pageEntries.map((entry, idx) => {
+                {entries.map((entry, idx) => {
                   const isEditingScore = editState?.id === entry.id && editState.field === "score";
                   const isEditingCat = editState?.id === entry.id && editState.field === "category";
 
@@ -230,7 +230,7 @@ export default function DatabasePage() {
                             onKeyDown={(e) => { if (e.key === "Enter") handleEditCommit(entry); if (e.key === "Escape") setEditState(null); }}
                             className="bg-background border border-input rounded px-1.5 py-0.5 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-ring"
                           >
-                            {uniqueCategories.map((c) => <option key={c} value={c}>{c}</option>)}
+                            {ALL_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
                           </select>
                         ) : (
                           <button
@@ -286,7 +286,7 @@ export default function DatabasePage() {
             {totalPages > 1 && (
               <div className="flex items-center justify-between px-4 py-3 border-t border-border">
                 <span className="text-xs text-muted-foreground">
-                  Page {page + 1} of {totalPages} · {entries.length} results
+                  Page {page + 1} of {totalPages} · Showing {entries.length} of {total} total
                 </span>
                 <div className="flex gap-2">
                   <button

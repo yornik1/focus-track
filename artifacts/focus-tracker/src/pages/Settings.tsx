@@ -1,6 +1,14 @@
 import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { getSettings, saveSettings, testSettings, getStatus, type Settings } from "@/api";
+import {
+  getSettings,
+  saveSettings,
+  testSettings,
+  getStatus,
+  fetchGeminiModels,
+  type Settings,
+  type SettingsResponse,
+} from "@/api";
 
 function StatusDot({ alive }: { alive: boolean }) {
   return (
@@ -9,7 +17,7 @@ function StatusDot({ alive }: { alive: boolean }) {
 }
 
 export default function SettingsPage() {
-  const { data: currentSettings } = useQuery<Settings>({
+  const { data: currentSettings } = useQuery<SettingsResponse>({
     queryKey: ["settings"],
     queryFn: getSettings,
   });
@@ -33,7 +41,10 @@ export default function SettingsPage() {
   const [saved, setSaved] = useState(false);
 
   useEffect(() => {
-    if (currentSettings) setForm({ ...currentSettings });
+    if (currentSettings) {
+      const { allowed_categories: _a, default_prompt: _d, ...settings } = currentSettings;
+      setForm(settings);
+    }
   }, [currentSettings]);
 
   const saveMutation = useMutation({
@@ -49,6 +60,19 @@ export default function SettingsPage() {
     onSuccess: (result) => setTestResult(result),
     onError: () => setTestResult({ success: false, message: "Connection failed. Check provider and token." }),
   });
+
+  const geminiModelsQuery = useQuery({
+    queryKey: ["gemini-models", form.token],
+    queryFn: () => fetchGeminiModels(form.token),
+    enabled: form.provider === "gemini" && form.token.trim().length > 0,
+    staleTime: 5 * 60_000,
+  });
+
+  const geminiModelOptions = geminiModelsQuery.data ?? [];
+  const geminiSelectOptions =
+    form.model && !geminiModelOptions.some((m) => m.id === form.model)
+      ? [{ id: form.model, displayName: form.model }, ...geminiModelOptions]
+      : geminiModelOptions;
 
   const update = <K extends keyof Settings>(key: K, value: Settings[K]) => {
     setForm((f) => ({ ...f, [key]: value }));
@@ -141,34 +165,51 @@ export default function SettingsPage() {
         <div className="space-y-1">
           <label className="text-sm text-muted-foreground">Model</label>
           {form.provider === "gemini" ? (
-            <div className="flex gap-2 mt-1">
-              {(["gemini-2.5-flash", "gemini-2.0-flash-exp"] as const).map((m) => (
-                <button
-                  key={m}
-                  onClick={() => update("model", m)}
-                  className={`px-3 py-1.5 rounded-md text-xs font-medium border transition-colors ${
-                    form.model === m
-                      ? "bg-primary text-primary-foreground border-primary"
-                      : "bg-card border-border text-muted-foreground hover:text-foreground hover:bg-accent"
-                  }`}
-                >
-                  {m}
-                </button>
-              ))}
-            </div>
+            <>
+              <select
+                value={form.model}
+                onChange={(e) => update("model", e.target.value)}
+                disabled={!form.token.trim() || geminiModelsQuery.isLoading}
+                className="mt-1 w-full bg-background border border-input rounded-md px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-ring font-mono disabled:opacity-50"
+              >
+                {!form.token.trim() ? (
+                  <option value={form.model}>Введите API token</option>
+                ) : geminiModelsQuery.isLoading ? (
+                  <option value={form.model}>Загрузка моделей…</option>
+                ) : geminiModelsQuery.isError ? (
+                  <option value={form.model}>{form.model}</option>
+                ) : geminiSelectOptions.length === 0 ? (
+                  <option value={form.model}>{form.model}</option>
+                ) : (
+                  geminiSelectOptions.map((m) => (
+                    <option key={m.id} value={m.id}>
+                      {m.displayName !== m.id ? `${m.displayName} (${m.id})` : m.id}
+                    </option>
+                  ))
+                )}
+              </select>
+              {geminiModelsQuery.isError && (
+                <p className="text-xs text-red-300/90 mt-1">
+                  Не удалось загрузить список:{" "}
+                  {geminiModelsQuery.error instanceof Error
+                    ? geminiModelsQuery.error.message
+                    : "ошибка API"}
+                </p>
+              )}
+            </>
           ) : (
             <input
               type="text"
               value={form.model}
               onChange={(e) => update("model", e.target.value)}
               placeholder="llava:7b"
-              className="w-full bg-background border border-input rounded-md px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-ring font-mono placeholder:font-sans placeholder:text-muted-foreground/60"
+              className="mt-1 w-full bg-background border border-input rounded-md px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-ring font-mono placeholder:font-sans placeholder:text-muted-foreground/60"
             />
           )}
           <p className="text-xs text-muted-foreground mt-1">
             {form.provider === "gemini"
-              ? "gemini-2.5-flash is faster and cheaper (recommended)"
-              : "Model must be installed in Ollama (e.g., llava:7b, llava:13b)"}
+              ? "Список с Google API (модели с generateContent). Сохранённая модель остаётся в списке, даже если API её не вернул."
+              : "Локальный Ollama (не используется по умолчанию)"}
           </p>
         </div>
       </div>
@@ -183,8 +224,22 @@ export default function SettingsPage() {
           className="w-full bg-background border border-input rounded-md px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-ring font-mono resize-y placeholder:font-sans placeholder:text-muted-foreground/60"
         />
         <p className="text-xs text-muted-foreground">
-          Prompt sent to LLM with each screenshot. Must instruct the model to return JSON with score, category, summary.
+          Промпт уходит в LLM с каждым скриншотом. Ответ — JSON: score, category, summary. Категория только из списка ниже.
         </p>
+        {currentSettings && currentSettings.allowed_categories.length > 0 && (
+          <p className="text-xs text-muted-foreground">
+            Допустимые категории: {currentSettings.allowed_categories.join(", ")}
+          </p>
+        )}
+        {currentSettings?.default_prompt && (
+          <button
+            type="button"
+            onClick={() => update("prompt", currentSettings.default_prompt)}
+            className="text-xs text-primary hover:underline"
+          >
+            Сбросить промпт по умолчанию
+          </button>
+        )}
       </div>
 
       <div className="bg-card border border-card-border rounded-xl p-5 space-y-5">
