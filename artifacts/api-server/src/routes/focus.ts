@@ -1,4 +1,4 @@
-import { Router } from "express";
+import { Router, type Response } from "express";
 import {
   db,
   focusLogTable,
@@ -8,6 +8,8 @@ import {
   normalizeSettingsPayload,
   DEFAULT_PROMPT,
   ALLOWED_CATEGORIES,
+  isProductiveCategory,
+  PRODUCTIVE_DAY_MINUTES,
 } from "@workspace/db";
 import { eq, gte, lte, and, sql, desc } from "drizzle-orm";
 import { testLlmConnection } from "../llm-connection-test";
@@ -201,7 +203,7 @@ router.patch("/logs/:id", async (req, res) => {
 // GET /api/stats/streak
 router.get("/stats/streak", async (req, res) => {
   const settings = readAppSettings() ?? getDefaultAppSettings();
-  const threshold = settings.focused_score_threshold ?? 6;
+  const intervalMin = settings.screenshot_interval ?? 2;
 
   // Все записи за последние 90 дней
   const since = new Date();
@@ -211,19 +213,39 @@ router.get("/stats/streak", async (req, res) => {
     .from(focusLogTable)
     .where(gte(focusLogTable.timestamp, Math.floor(since.getTime() / 1000)));
 
-  // Группируем по датам, считаем avg
-  const byDate = new Map<string, number[]>();
+  // Скриншоты по дате и категории (только продуктивные)
+  const productiveByDate = new Map<string, Map<string, number>>();
+  const scoresByDate = new Map<string, number[]>();
   for (const row of rows) {
     const date = row.datetime.slice(0, 10);
-    if (!byDate.has(date)) byDate.set(date, []);
-    byDate.get(date)!.push(row.focus_score);
+    if (!scoresByDate.has(date)) scoresByDate.set(date, []);
+    scoresByDate.get(date)!.push(row.focus_score);
+
+    if (!isProductiveCategory(row.category)) continue;
+    if (!productiveByDate.has(date)) productiveByDate.set(date, new Map());
+    const catMap = productiveByDate.get(date)!;
+    catMap.set(row.category, (catMap.get(row.category) ?? 0) + 1);
   }
 
-  // "Фокусный день" = avg_score >= threshold
-  const focusedDates = new Set<string>();
-  for (const [date, scores] of byDate) {
-    const avg = scores.reduce((a, b) => a + b, 0) / scores.length;
-    if (avg >= threshold) focusedDates.add(date);
+  function productiveStats(dateStr: string): { minutes: number; by_category: Record<string, number> } {
+    const catMap = productiveByDate.get(dateStr);
+    if (!catMap) return { minutes: 0, by_category: {} };
+    const by_category: Record<string, number> = {};
+    let minutes = 0;
+    for (const [cat, count] of catMap) {
+      const mins = count * intervalMin;
+      by_category[cat] = mins;
+      minutes += mins;
+    }
+    return { minutes, by_category };
+  }
+
+  // Продуктивный день = ≥ PRODUCTIVE_DAY_MINUTES в полезных категориях
+  const productiveDates = new Set<string>();
+  for (const [date, catMap] of productiveByDate) {
+    let total = 0;
+    for (const count of catMap.values()) total += count * intervalMin;
+    if (total >= PRODUCTIVE_DAY_MINUTES) productiveDates.add(date);
   }
 
   // Текущий streak (только рабочие дни)
@@ -233,11 +255,10 @@ router.get("/stats/streak", async (req, res) => {
     const d = new Date(today);
     d.setDate(d.getDate() - i);
     const dow = d.getDay();
-    if (dow === 0 || dow === 6) continue; // пропускаем выходные
+    if (dow === 0 || dow === 6) continue;
     const dateStr = localDateStr(d);
-    // Сегодня ещё нет данных — пропускаем, не ломаем streak
-    if (i === 0 && !byDate.has(dateStr)) continue;
-    if (focusedDates.has(dateStr)) {
+    if (i === 0 && !productiveByDate.has(dateStr) && !scoresByDate.has(dateStr)) continue;
+    if (productiveDates.has(dateStr)) {
       streak++;
     } else {
       break;
@@ -245,7 +266,7 @@ router.get("/stats/streak", async (req, res) => {
   }
 
   // Best streak (максимальная последовательность рабочих дней)
-  const allDates = Array.from(byDate.keys()).sort();
+  const allDates = Array.from(new Set([...productiveByDate.keys(), ...scoresByDate.keys()])).sort();
   let bestStreak = 0;
   let currentRun = 0;
   let prevDate: Date | null = null;
@@ -253,9 +274,9 @@ router.get("/stats/streak", async (req, res) => {
   for (const dateStr of allDates) {
     const d = new Date(dateStr);
     const dow = d.getDay();
-    if (dow === 0 || dow === 6) continue; // пропускаем выходные
+    if (dow === 0 || dow === 6) continue;
 
-    if (!focusedDates.has(dateStr)) {
+    if (!productiveDates.has(dateStr)) {
       currentRun = 0;
       prevDate = null;
       continue;
@@ -264,10 +285,8 @@ router.get("/stats/streak", async (req, res) => {
     if (prevDate === null) {
       currentRun = 1;
     } else {
-      // Проверяем что это следующий рабочий день
       let expectedDate = new Date(prevDate);
       expectedDate.setDate(expectedDate.getDate() + 1);
-      // Пропускаем выходные
       while (expectedDate.getDay() === 0 || expectedDate.getDay() === 6) {
         expectedDate.setDate(expectedDate.getDate() + 1);
       }
@@ -288,12 +307,15 @@ router.get("/stats/streak", async (req, res) => {
     const d = new Date(today);
     d.setDate(d.getDate() - i);
     const dateStr = localDateStr(d);
-    const scores = byDate.get(dateStr);
+    const scores = scoresByDate.get(dateStr);
     const avg = scores ? scores.reduce((a, b) => a + b, 0) / scores.length : null;
+    const { minutes, by_category } = productiveStats(dateStr);
     last7days.push({
       date: dateStr,
       avg_score: avg ? Math.round(avg * 10) / 10 : null,
       is_weekend: d.getDay() === 0 || d.getDay() === 6,
+      productive_minutes: minutes,
+      productive_by_category: by_category,
     });
   }
 
@@ -344,33 +366,25 @@ function settingsResponse() {
   };
 }
 
-// GET /api/settings
-router.get("/settings", (req, res) => {
-  res.json(settingsResponse());
-});
-
-// POST /api/settings
-router.post("/settings", (req, res) => {
-  try {
-    const settings = normalizeSettingsPayload(req.body);
-    writeAppSettings(settings);
-    res.json({
-      ...settings,
-      allowed_categories: [...ALLOWED_CATEGORIES],
-      default_prompt: DEFAULT_PROMPT,
-    });
-  } catch (err) {
-    const message = err instanceof Error ? err.message : "Invalid settings";
-    res.status(400).json({ success: false, message });
-  }
-});
-
 // GET /api/settings/gemini-models?token=...
 router.get("/settings/gemini-models", async (req, res) => {
   const fromQuery = req.query.token != null ? String(req.query.token).trim() : "";
+  return handleGeminiModelsList(fromQuery, res);
+});
+
+// POST /api/settings/gemini-models — token в body (предпочтительно для фронта)
+router.post("/settings/gemini-models", async (req, res) => {
+  const fromBody =
+    req.body && typeof req.body === "object" && req.body.token != null
+      ? String(req.body.token).trim()
+      : "";
+  return handleGeminiModelsList(fromBody, res);
+});
+
+async function handleGeminiModelsList(tokenFromClient: string, res: Response) {
   const stored = readAppSettings();
   const token =
-    fromQuery ||
+    tokenFromClient ||
     (stored?.provider === "gemini" ? stored.token.trim() : "");
 
   if (!token) {
@@ -384,7 +398,7 @@ router.get("/settings/gemini-models", async (req, res) => {
     const message = err instanceof Error ? err.message : "Failed to list models";
     return res.status(502).json({ success: false, message });
   }
-});
+}
 
 // POST /api/settings/test
 router.post("/settings/test", async (req, res) => {
@@ -412,6 +426,27 @@ router.post("/settings/test", async (req, res) => {
   }
 
   return res.status(200).json(result);
+});
+
+// GET /api/settings
+router.get("/settings", (req, res) => {
+  res.json(settingsResponse());
+});
+
+// POST /api/settings
+router.post("/settings", (req, res) => {
+  try {
+    const settings = normalizeSettingsPayload(req.body);
+    writeAppSettings(settings);
+    res.json({
+      ...settings,
+      allowed_categories: [...ALLOWED_CATEGORIES],
+      default_prompt: DEFAULT_PROMPT,
+    });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Invalid settings";
+    res.status(400).json({ success: false, message });
+  }
 });
 
 // GET /api/status

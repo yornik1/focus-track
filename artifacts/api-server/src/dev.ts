@@ -20,7 +20,10 @@ async function start() {
   // Vite dev server как middleware
   const vite = await createViteServer({
     root: frontendRoot,
-    server: { middlewareMode: true },
+    server: {
+      middlewareMode: true,
+      hmr: { port: 24679 },
+    },
     appType: "spa",
   });
 

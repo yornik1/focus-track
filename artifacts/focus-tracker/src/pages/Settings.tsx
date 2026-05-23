@@ -1,5 +1,5 @@
-import { useState, useEffect } from "react";
-import { useQuery, useMutation } from "@tanstack/react-query";
+import { useState, useEffect, useRef } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   getSettings,
   saveSettings,
@@ -17,6 +17,7 @@ function StatusDot({ alive }: { alive: boolean }) {
 }
 
 export default function SettingsPage() {
+  const queryClient = useQueryClient();
   const { data: currentSettings } = useQuery<SettingsResponse>({
     queryKey: ["settings"],
     queryFn: getSettings,
@@ -39,17 +40,23 @@ export default function SettingsPage() {
   });
   const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null);
   const [saved, setSaved] = useState(false);
+  const settingsHydrated = useRef(false);
 
   useEffect(() => {
-    if (currentSettings) {
+    if (currentSettings && !settingsHydrated.current) {
       const { allowed_categories: _a, default_prompt: _d, ...settings } = currentSettings;
       setForm(settings);
+      settingsHydrated.current = true;
     }
   }, [currentSettings]);
 
   const saveMutation = useMutation({
     mutationFn: saveSettings,
-    onSuccess: () => {
+    onSuccess: (data) => {
+      queryClient.setQueryData(["settings"], data);
+      queryClient.invalidateQueries({ queryKey: ["gemini-models"] });
+      const { allowed_categories: _a, default_prompt: _d, ...settings } = data;
+      setForm(settings);
       setSaved(true);
       setTimeout(() => setSaved(false), 2500);
     },
@@ -61,11 +68,19 @@ export default function SettingsPage() {
     onError: () => setTestResult({ success: false, message: "Connection failed. Check provider and token." }),
   });
 
+  const tokenDirty =
+    !!currentSettings && form.token.trim() !== currentSettings.token.trim();
+
   const geminiModelsQuery = useQuery({
-    queryKey: ["gemini-models", form.token],
-    queryFn: () => fetchGeminiModels(form.token),
-    enabled: form.provider === "gemini" && form.token.trim().length > 0,
+    queryKey: ["gemini-models", tokenDirty ? form.token : "saved"],
+    queryFn: () => fetchGeminiModels(tokenDirty ? form.token : undefined),
+    enabled:
+      form.provider === "gemini" &&
+      !!currentSettings &&
+      (tokenDirty ? form.token.trim().length > 0 : currentSettings.token.trim().length > 0),
     staleTime: 5 * 60_000,
+    retry: 0,
+    refetchOnWindowFocus: false,
   });
 
   const geminiModelOptions = geminiModelsQuery.data ?? [];
@@ -169,15 +184,11 @@ export default function SettingsPage() {
               <select
                 value={form.model}
                 onChange={(e) => update("model", e.target.value)}
-                disabled={!form.token.trim() || geminiModelsQuery.isLoading}
+                disabled={!form.token.trim()}
                 className="mt-1 w-full bg-background border border-input rounded-md px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-ring font-mono disabled:opacity-50"
               >
                 {!form.token.trim() ? (
                   <option value={form.model}>Введите API token</option>
-                ) : geminiModelsQuery.isLoading ? (
-                  <option value={form.model}>Загрузка моделей…</option>
-                ) : geminiModelsQuery.isError ? (
-                  <option value={form.model}>{form.model}</option>
                 ) : geminiSelectOptions.length === 0 ? (
                   <option value={form.model}>{form.model}</option>
                 ) : (
@@ -188,6 +199,9 @@ export default function SettingsPage() {
                   ))
                 )}
               </select>
+              {geminiModelsQuery.isFetching && (
+                <p className="text-xs text-muted-foreground mt-1">Загрузка моделей…</p>
+              )}
               {geminiModelsQuery.isError && (
                 <p className="text-xs text-red-300/90 mt-1">
                   Не удалось загрузить список:{" "}
@@ -226,11 +240,11 @@ export default function SettingsPage() {
         <p className="text-xs text-muted-foreground">
           Промпт уходит в LLM с каждым скриншотом. Ответ — JSON: score, category, summary. Категория только из списка ниже.
         </p>
-        {currentSettings && currentSettings.allowed_categories.length > 0 && (
+        {currentSettings?.allowed_categories?.length ? (
           <p className="text-xs text-muted-foreground">
             Допустимые категории: {currentSettings.allowed_categories.join(", ")}
           </p>
-        )}
+        ) : null}
         {currentSettings?.default_prompt && (
           <button
             type="button"

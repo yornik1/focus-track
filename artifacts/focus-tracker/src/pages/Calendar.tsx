@@ -87,6 +87,17 @@ function segmentDurationPx(seg: Segment): number {
   return ((seg.end.getTime() - seg.start.getTime()) / 3_600_000) * HOUR_HEIGHT;
 }
 
+function categoryMinutesBreakdown(segs: LayoutSegment[]): Array<{ category: string; minutes: number }> {
+  const byCat = new Map<string, number>();
+  for (const s of segs) {
+    const mins = (s.end.getTime() - s.start.getTime()) / 60_000;
+    byCat.set(s.category, (byCat.get(s.category) ?? 0) + mins);
+  }
+  return [...byCat.entries()]
+    .map(([category, minutes]) => ({ category, minutes }))
+    .sort((a, b) => b.minutes - a.minutes);
+}
+
 function segmentLayoutStyle(seg: LayoutSegment): {
   top: number;
   height: number;
@@ -218,13 +229,11 @@ export default function CalendarPage() {
             const dateStr = isoDate(day);
             const isToday = dateStr === todayStr;
             const segs = segmentsByDay.get(dateStr) ?? [];
-            const totalFocused = segs
-              .filter((s) => s.category === "code" || s.avg_score >= 6)
-              .reduce((acc, s) => acc + (s.end.getTime() - s.start.getTime()) / 60000, 0);
+            const byCategory = categoryMinutesBreakdown(segs);
             return (
               <div
                 key={i}
-                className="flex-1 py-3 px-2 text-center border-l border-border first:border-l-0"
+                className="flex-1 py-3 px-1.5 text-center border-l border-border first:border-l-0"
               >
                 <div className={`text-xs font-medium ${isToday ? "text-muted-foreground" : "text-muted-foreground"}`}>
                   {DAY_NAMES[i]}
@@ -236,9 +245,26 @@ export default function CalendarPage() {
                 >
                   {day.getDate()}
                 </div>
-                {totalFocused > 0 && (
-                  <div className="text-[10px] text-muted-foreground mt-0.5">
-                    {Math.round(totalFocused)}m
+                {byCategory.length > 0 && (
+                  <div className="mt-1 space-y-0.5">
+                    {byCategory.map(({ category, minutes }) => {
+                      const colors = CAT_COLORS[category] ?? DEFAULT_CAT_COLOR;
+                      return (
+                        <div
+                          key={category}
+                          className="flex items-center justify-center gap-1 text-[10px] leading-tight tabular-nums"
+                        >
+                          <span
+                            className="w-1.5 h-1.5 rounded-full shrink-0"
+                            style={{ backgroundColor: colors.border }}
+                          />
+                          <span className="capitalize truncate" style={{ color: colors.text }}>
+                            {category}
+                          </span>
+                          <span className="text-muted-foreground shrink-0">{Math.round(minutes)}m</span>
+                        </div>
+                      );
+                    })}
                   </div>
                 )}
               </div>

@@ -13,6 +13,26 @@ export const ALLOWED_CATEGORIES = [
 
 export type AllowedCategory = (typeof ALLOWED_CATEGORIES)[number];
 
+/** Категории, которые считаются продуктивным временем в недельной статистике. */
+export const PRODUCTIVE_CATEGORIES = [
+  "code",
+  "research",
+  "design",
+  "writing",
+  "communication",
+] as const;
+
+export type ProductiveCategory = (typeof PRODUCTIVE_CATEGORIES)[number];
+
+const PRODUCTIVE_SET = new Set<string>(PRODUCTIVE_CATEGORIES);
+
+export function isProductiveCategory(category: string): boolean {
+  return PRODUCTIVE_SET.has(category);
+}
+
+/** Минимум продуктивных минут за день, чтобы день шёл в streak. */
+export const PRODUCTIVE_DAY_MINUTES = 30;
+
 export const DEFAULT_CATEGORY_FALLBACK: AllowedCategory = "code";
 
 const ALLOWED_SET = new Set<string>(ALLOWED_CATEGORIES);

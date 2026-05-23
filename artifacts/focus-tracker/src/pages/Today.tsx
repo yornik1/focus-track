@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { getTodayStats, getStreak, pause, type TodayStats, type StreakData, type Category } from "@/api";
+import TimeCounters from "@/components/time-counters";
 
 function scoreColor(score: number | null): string {
   if (score === null) return "#1e2535";
@@ -27,7 +28,18 @@ const CATEGORY_COLORS: Record<string, string> = {
   communication: "bg-cyan-500/15 text-cyan-300 border border-cyan-500/20",
   gaming: "bg-red-500/15 text-red-300 border border-red-500/20",
   news: "bg-orange-500/15 text-orange-300 border border-orange-500/20",
+  design: "bg-pink-500/15 text-pink-300 border border-pink-500/20",
+  writing: "bg-indigo-500/15 text-indigo-300 border border-indigo-500/20",
 };
+
+const PRODUCTIVE_BAR_COLORS: Record<string, string> = {
+  code: "#3b82f6",
+  research: "#10b981",
+  design: "#ec4899",
+  writing: "#6366f1",
+  communication: "#06b6d4",
+};
+const DEFAULT_PRODUCTIVE_BAR = "#22c55e";
 
 function categoryBadgeClass(cat: Category): string {
   return CATEGORY_COLORS[cat] ?? "bg-zinc-500/15 text-zinc-400 border border-zinc-500/20";
@@ -43,6 +55,12 @@ function formatDuration(minutes: number): string {
   const m = minutes % 60;
   if (h === 0) return `${m}m`;
   return `${h}h ${m}m`;
+}
+
+function formatMinutesOnly(minutes: number): string {
+  return `${Math.round(minutes)
+    .toString()
+    .replace(/\B(?=(\d{3})+(?!\d))/g, " ")}m`;
 }
 
 function HourlyHeatmap({ data }: { data: TodayStats["hourly_heatmap"] }) {
@@ -145,13 +163,12 @@ function Sparkline({ days }: { days: StreakData["last7days"] }) {
   if (days.length === 0) {
     return <svg width={W} height={H} />;
   }
-  const scores = days.map((d) => d.avg_score ?? 0);
-  const min = 0;
-  const max = 10;
-  const xStep = (W - PAD * 2) / Math.max(scores.length - 1, 1);
-  const toY = (v: number) => PAD + (1 - (v - min) / (max - min)) * (H - PAD * 2);
+  const values = days.map((d) => d.productive_minutes ?? 0);
+  const max = Math.max(...values, 1);
+  const xStep = (W - PAD * 2) / Math.max(values.length - 1, 1);
+  const toY = (v: number) => PAD + (1 - v / max) * (H - PAD * 2);
 
-  const points = scores.map((s, i) => [PAD + i * xStep, toY(s)] as [number, number]);
+  const points = values.map((v, i) => [PAD + i * xStep, toY(v)] as [number, number]);
   const polyline = points.map(([x, y]) => `${x},${y}`).join(" ");
   const areaPath = [
     `M ${points[0][0]} ${H}`,
@@ -160,8 +177,8 @@ function Sparkline({ days }: { days: StreakData["last7days"] }) {
     "Z",
   ].join(" ");
 
-  const lastScore = scores[scores.length - 1];
-  const lineColor = lastScore >= 7 ? "#22c55e" : lastScore >= 4 ? "#f59e0b" : "#ef4444";
+  const lastValue = values[values.length - 1];
+  const lineColor = lastValue >= 120 ? "#22c55e" : lastValue >= 30 ? "#f59e0b" : "#ef4444";
 
   return (
     <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`} className="overflow-visible">
@@ -174,8 +191,8 @@ function Sparkline({ days }: { days: StreakData["last7days"] }) {
       <path d={areaPath} fill="url(#spark-fill)" />
       <polyline points={polyline} fill="none" stroke={lineColor} strokeWidth="1.5" strokeLinejoin="round" strokeLinecap="round" />
       {points.map(([x, y], i) => {
-        const s = scores[i];
-        const c = s >= 7 ? "#22c55e" : s >= 4 ? "#f59e0b" : "#ef4444";
+        const v = values[i];
+        const c = v >= 120 ? "#22c55e" : v >= 30 ? "#f59e0b" : "#ef4444";
         const isLast = i === points.length - 1;
         return (
           <circle
@@ -191,24 +208,63 @@ function Sparkline({ days }: { days: StreakData["last7days"] }) {
   );
 }
 
+function weekCategoryTotals(days: StreakData["last7days"]): Array<{ category: string; minutes: number }> {
+  const totals = new Map<string, number>();
+  for (const d of days) {
+    for (const [cat, mins] of Object.entries(d.productive_by_category ?? {})) {
+      totals.set(cat, (totals.get(cat) ?? 0) + mins);
+    }
+  }
+  return [...totals.entries()]
+    .map(([category, minutes]) => ({ category, minutes }))
+    .sort((a, b) => b.minutes - a.minutes);
+}
+
+function dominantCategory(byCategory: Record<string, number>): string | null {
+  let best: string | null = null;
+  let bestMins = 0;
+  for (const [cat, mins] of Object.entries(byCategory)) {
+    if (mins > bestMins) {
+      bestMins = mins;
+      best = cat;
+    }
+  }
+  return best;
+}
+
 function StreakCard({ data }: { data: StreakData }) {
-  const THRESHOLD = 6;
   const days = data.last7days;
   const dayLabels = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+  const apiHasProductiveStats = days.some((d) => d.productive_minutes != null);
+  const weekTotal = days.reduce((acc, d) => acc + (d.productive_minutes ?? 0), 0);
+  const maxDayMinutes = Math.max(...days.map((d) => d.productive_minutes ?? 0), 1);
+  const weekCategories = weekCategoryTotals(days);
+  const productiveDays = days.filter((d) => (d.productive_minutes ?? 0) >= 30 && !d.is_weekend).length;
 
   return (
-    <div className="bg-card border border-card-border rounded-xl p-5 flex items-center gap-6">
+    <div className="bg-card border border-card-border rounded-xl p-5 flex flex-col gap-3">
+      {!apiHasProductiveStats && (
+        <p className="text-xs text-amber-300/90 bg-amber-500/10 border border-amber-500/20 rounded-md px-3 py-2">
+          Статистика недели устарела — перезапустите <span className="font-mono">pnpm dev</span> и обновите страницу.
+        </p>
+      )}
+      <div className="flex items-center gap-6">
       <div className="flex items-center gap-3 shrink-0">
-        <div className="w-10 h-10 rounded-lg bg-orange-500/10 border border-orange-500/20 flex items-center justify-center text-xl">
-          🔥
+        <div className="w-10 h-10 rounded-lg bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-xl">
+          ⏱
         </div>
         <div>
           <div className="flex items-baseline gap-1">
-            <span className="text-3xl font-bold tabular-nums text-orange-400">{data.streak}</span>
-            <span className="text-sm text-muted-foreground font-medium">day streak</span>
+            <span className="text-3xl font-bold tabular-nums text-emerald-400">{formatMinutesOnly(weekTotal)}</span>
           </div>
+          <div className="text-sm text-muted-foreground font-medium">productive this week</div>
           <div className="text-xs text-muted-foreground mt-0.5">
-            Best: <span className="text-foreground font-medium">{data.best_streak} days</span>
+            Streak: <span className="text-foreground font-medium">{data.streak} weekdays</span>
+            <span className="mx-1">·</span>
+            best {data.best_streak}
+          </div>
+          <div className="text-[10px] text-muted-foreground/80 mt-0.5 max-w-[160px]">
+            code, research, design, writing, communication — ≥30m/day
           </div>
         </div>
       </div>
@@ -218,27 +274,41 @@ function StreakCard({ data }: { data: StreakData }) {
       <div className="flex-1 min-w-0">
         <div className="flex items-end justify-between gap-1 mb-1">
           {days.map((d, i) => {
-            const s = d.avg_score;
-            const focused = s !== null && s >= THRESHOLD;
-            const color = s === null ? "#1e2535" : s >= 7 ? "#22c55e" : s >= 4 ? "#f59e0b" : "#ef4444";
+            const mins = d.productive_minutes ?? 0;
+            const topCat = dominantCategory(d.productive_by_category ?? {});
+            const color =
+              mins === 0
+                ? "#1e2535"
+                : topCat
+                  ? (PRODUCTIVE_BAR_COLORS[topCat] ?? DEFAULT_PRODUCTIVE_BAR)
+                  : DEFAULT_PRODUCTIVE_BAR;
             const isToday = i === days.length - 1;
             const dayOfWeek = new Date(d.date).getDay();
             return (
-              <div key={i} className="flex flex-col items-center gap-1 flex-1">
+              <div key={i} className="flex flex-col items-center gap-1 flex-1 min-w-0">
                 <div
                   className="w-full rounded-sm transition-all"
                   style={{
-                    height: s !== null ? 6 + (s / 10) * 26 : 6,
+                    height: mins > 0 ? 6 + (mins / maxDayMinutes) * 26 : 6,
                     backgroundColor: color,
-                    opacity: s !== null ? 0.85 : 0.3,
+                    opacity: mins > 0 ? 0.85 : 0.3,
                     outline: isToday ? `1.5px solid ${color}` : "none",
                     outlineOffset: 2,
                   }}
-                  title={s !== null ? `${d.date}: ${s.toFixed(1)}` : d.date}
+                  title={
+                    mins > 0
+                      ? `${d.date}: ${formatMinutesOnly(mins)} productive`
+                      : d.date
+                  }
                 />
                 <span className={`text-[10px] tabular-nums ${isToday ? "text-foreground font-semibold" : "text-muted-foreground"}`}>
                   {dayLabels[dayOfWeek]}
                 </span>
+                {mins > 0 && (
+                  <span className="text-[9px] text-muted-foreground tabular-nums leading-none">
+                    {formatMinutesOnly(mins)}
+                  </span>
+                )}
               </div>
             );
           })}
@@ -249,18 +319,24 @@ function StreakCard({ data }: { data: StreakData }) {
         <Sparkline days={days} />
       </div>
 
-      <div className="shrink-0 text-right">
-        <div className="text-xs text-muted-foreground mb-1">Last 7 days</div>
-        {(() => {
-          const focused = days.filter((d) => d.avg_score !== null && d.avg_score >= THRESHOLD).length;
-          const total = days.filter((d) => d.avg_score !== null).length;
-          return (
-            <div className="text-sm font-semibold text-foreground">
-              {focused}<span className="text-muted-foreground font-normal">/{total}</span>
-              <div className="text-xs text-muted-foreground font-normal">focused days</div>
-            </div>
-          );
-        })()}
+      <div className="shrink-0 text-right min-w-[88px]">
+        <div className="text-xs text-muted-foreground mb-1">By category</div>
+        {weekCategories.length === 0 ? (
+          <div className="text-xs text-muted-foreground">No data</div>
+        ) : (
+          <div className="space-y-0.5">
+            {weekCategories.slice(0, 4).map(({ category, minutes }) => (
+              <div key={category} className="flex items-center justify-end gap-1.5 text-[10px] tabular-nums">
+                <span className="capitalize text-muted-foreground">{category}</span>
+                <span className="text-foreground font-medium">{formatMinutesOnly(minutes)}</span>
+              </div>
+            ))}
+          </div>
+        )}
+        <div className="text-[10px] text-muted-foreground mt-1.5">
+          {productiveDays} productive weekdays
+        </div>
+      </div>
       </div>
     </div>
   );
@@ -336,30 +412,6 @@ export default function TodayPage() {
 
   const mutation = useMutation({ mutationFn: pause });
 
-  if (isLoading) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <div className="flex gap-1">
-          {[0, 1, 2].map((i) => (
-            <div
-              key={i}
-              className="w-2 h-2 bg-primary rounded-full animate-bounce"
-              style={{ animationDelay: `${i * 0.15}s` }}
-            />
-          ))}
-        </div>
-      </div>
-    );
-  }
-
-  if (error || !data) {
-    return (
-      <div className="text-center py-16 text-muted-foreground">
-        <p className="text-sm">Failed to load today's stats.</p>
-      </div>
-    );
-  }
-
   return (
     <div className="space-y-6">
       <div className="flex items-start justify-between">
@@ -372,6 +424,30 @@ export default function TodayPage() {
         <PauseDropdown onPause={(d) => mutation.mutate(d)} />
       </div>
 
+      <TimeCounters />
+
+      {isLoading && (
+        <div className="flex items-center justify-center h-64">
+          <div className="flex gap-1">
+            {[0, 1, 2].map((i) => (
+              <div
+                key={i}
+                className="w-2 h-2 bg-primary rounded-full animate-bounce"
+                style={{ animationDelay: `${i * 0.15}s` }}
+              />
+            ))}
+          </div>
+        </div>
+      )}
+
+      {!isLoading && (error || !data) && (
+        <div className="text-center py-16 text-muted-foreground">
+          <p className="text-sm">Failed to load today's stats.</p>
+        </div>
+      )}
+
+      {!isLoading && data && (
+      <>
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <div className="md:col-span-1 bg-card border border-card-border rounded-xl p-5 space-y-4">
           <div className="flex items-center justify-between">
@@ -450,6 +526,8 @@ export default function TodayPage() {
         <h2 className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-4">Hourly Heatmap</h2>
         <HourlyHeatmap data={data.hourly_heatmap} />
       </div>
+      </>
+      )}
     </div>
   );
 }

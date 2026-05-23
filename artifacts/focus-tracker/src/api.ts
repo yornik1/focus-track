@@ -222,32 +222,50 @@ function buildCalendarMock(month: string): CalendarResponse {
   return { days };
 }
 
+async function readJsonResponse<T>(res: Response): Promise<T> {
+  const text = await res.text();
+  try {
+    return JSON.parse(text) as T;
+  } catch {
+    if (text.trimStart().startsWith("<")) {
+      throw new Error("Server returned HTML instead of JSON — restart dev server (pnpm dev)");
+    }
+    throw new Error(`Invalid server response: ${text.slice(0, 120)}`);
+  }
+}
+
 async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
   const res = await fetch(`${BASE_URL}${path}`, {
     headers: { "Content-Type": "application/json" },
     ...options,
   });
   if (!res.ok) throw new Error(`API error: ${res.status} ${res.statusText}`);
-  return res.json();
+  return readJsonResponse<T>(res);
 }
 
 export interface StreakData {
   streak: number;
   best_streak: number;
-  last7days: Array<{ date: string; avg_score: number | null; is_weekend: boolean }>;
+  last7days: Array<{
+    date: string;
+    avg_score: number | null;
+    is_weekend: boolean;
+    productive_minutes: number;
+    productive_by_category: Record<string, number>;
+  }>;
 }
 
 const MOCK_STREAK: StreakData = {
   streak: 6,
   best_streak: 12,
   last7days: [
-    { date: "2025-04-28", avg_score: 7.3, is_weekend: false },
-    { date: "2025-04-29", avg_score: 8.0, is_weekend: false },
-    { date: "2025-04-30", avg_score: 5.2, is_weekend: false },
-    { date: "2025-05-01", avg_score: 7.1, is_weekend: false },
-    { date: "2025-05-02", avg_score: 6.5, is_weekend: false },
-    { date: "2025-05-05", avg_score: 7.2, is_weekend: false },
-    { date: "2025-05-06", avg_score: 7.8, is_weekend: false },
+    { date: "2025-04-28", avg_score: 7.3, is_weekend: false, productive_minutes: 198, productive_by_category: { code: 120, research: 78 } },
+    { date: "2025-04-29", avg_score: 8.0, is_weekend: false, productive_minutes: 156, productive_by_category: { code: 156 } },
+    { date: "2025-04-30", avg_score: 5.2, is_weekend: false, productive_minutes: 90, productive_by_category: { code: 60, research: 30 } },
+    { date: "2025-05-01", avg_score: 7.1, is_weekend: false, productive_minutes: 210, productive_by_category: { code: 150, research: 60 } },
+    { date: "2025-05-02", avg_score: 6.5, is_weekend: false, productive_minutes: 175, productive_by_category: { code: 100, communication: 75 } },
+    { date: "2025-05-05", avg_score: 7.2, is_weekend: false, productive_minutes: 188, productive_by_category: { code: 128, research: 60 } },
+    { date: "2025-05-06", avg_score: 7.8, is_weekend: false, productive_minutes: 248, productive_by_category: { code: 180, research: 68 } },
   ],
 };
 
@@ -366,27 +384,25 @@ export interface GeminiModelOption {
   displayName: string;
 }
 
-export async function fetchGeminiModels(token: string): Promise<GeminiModelOption[]> {
+export async function fetchGeminiModels(token?: string): Promise<GeminiModelOption[]> {
   if (USE_MOCK) {
     return [
       { id: "gemini-2.5-flash", displayName: "Gemini 2.5 Flash" },
       { id: "gemini-2.0-flash-exp", displayName: "Gemini 2.0 Flash Experimental" },
     ];
   }
-  const params = new URLSearchParams({ token });
-  const res = await fetch(`${BASE_URL}/api/settings/gemini-models?${params}`);
+  const trimmed = token?.trim() ?? "";
+  const res = await fetch(`${BASE_URL}/api/settings/gemini-models`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(trimmed ? { token: trimmed } : {}),
+    signal: AbortSignal.timeout(20_000),
+  });
+  const data = await readJsonResponse<{ models?: GeminiModelOption[]; message?: string; success?: boolean }>(res);
   if (!res.ok) {
-    let message = `API error: ${res.status}`;
-    try {
-      const j = (await res.json()) as { message?: string };
-      if (j.message) message = j.message;
-    } catch {
-      // ignore
-    }
-    throw new Error(message);
+    throw new Error(data.message ?? `API error: ${res.status}`);
   }
-  const data = (await res.json()) as { models: GeminiModelOption[] };
-  return data.models;
+  return data.models ?? [];
 }
 
 export async function testSettings(provider: string, token: string, model: string): Promise<{ success: boolean; message: string }> {

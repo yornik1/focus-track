@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useLayoutEffect, useRef } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import TodayPage from "@/pages/Today";
 import CalendarPage from "@/pages/Calendar";
@@ -20,6 +20,14 @@ const TABS: { id: Tab; label: string }[] = [
 
 function Layout() {
   const [activeTab, setActiveTab] = useState<Tab>("today");
+  const mainRef = useRef<HTMLElement>(null);
+
+  useLayoutEffect(() => {
+    window.scrollTo(0, 0);
+    mainRef.current?.scrollTo(0, 0);
+  }, [activeTab]);
+
+  const selectTab = (tab: Tab) => setActiveTab(tab);
 
   return (
     <div className="min-h-screen bg-background text-foreground flex flex-col">
@@ -38,7 +46,7 @@ function Layout() {
             {TABS.map((tab) => (
               <button
                 key={tab.id}
-                onClick={() => setActiveTab(tab.id)}
+                onClick={() => selectTab(tab.id)}
                 className={`px-3 py-1.5 text-sm rounded-md transition-colors font-medium ${
                   activeTab === tab.id
                     ? "bg-accent text-foreground"
@@ -52,7 +60,7 @@ function Layout() {
         </div>
       </header>
 
-      <main className="flex-1 max-w-6xl mx-auto w-full px-6 py-8">
+      <main ref={mainRef} className="flex-1 max-w-6xl mx-auto w-full px-6 py-8">
         {activeTab === "today" && <TodayPage />}
         {activeTab === "calendar" && <CalendarPage />}
         {activeTab === "database" && <DatabasePage />}
