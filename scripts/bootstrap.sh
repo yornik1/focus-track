@@ -105,7 +105,9 @@ ensure_xcode_clt() {
 brew_usable() {
   setup_brew_path
   command -v brew >/dev/null 2>&1 || return 1
-  brew --version >/dev/null 2>&1
+  brew --version >/dev/null 2>&1 || return 1
+  # brew в PATH, но чужой (Permission denied у второго юзера)
+  brew install --dry-run --quiet hello >/dev/null 2>&1 || return 1
 }
 
 user_is_admin() {
@@ -115,6 +117,11 @@ user_is_admin() {
 ensure_homebrew() {
   if brew_usable; then
     ok "Homebrew"
+    return 0
+  fi
+  setup_brew_path
+  if command -v brew >/dev/null 2>&1; then
+    warn "Homebrew установлен другим пользователем — пропускаю"
     return 0
   fi
   if $DRY_RUN; then
@@ -174,23 +181,20 @@ ensure_toolchain_brew() {
   verify_node_pnpm
 }
 
-# Node + pnpm в ~/ — без admin, без Homebrew (второй юзер на Mac, корп. ноут)
+# Node + pnpm в ~/ — без admin, без Homebrew
 ensure_toolchain_user_local() {
   if $DRY_RUN; then
-    log "Node/pnpm → ~/.local (fnm)"
+    log "Node/pnpm → ~/.local (fnm, без brew)"
     return 0
   fi
 
-  log "Ставлю Node/pnpm в домашнюю папку (admin не нужен)..."
+  log "Ставлю Node/pnpm в ~/ (без Homebrew)..."
+
+  # shellcheck source=lib/toolchain-path.sh
+  source "$(dirname "$0")/lib/toolchain-path.sh"
+  install_fnm_binary
 
   export FNM_DIR="${HOME}/.local/share/fnm"
-  export FNM_MULTISHELL_PATH="${FNM_DIR}/aliases/default"
-  mkdir -p "${FNM_DIR}"
-
-  if [[ ! -x "${FNM_DIR}/fnm" ]]; then
-    run curl -fsSL https://fnm.vercel.app/install | bash -s -- --install-dir "${FNM_DIR}" --skip-shell
-  fi
-
   export PATH="${FNM_DIR}:${PATH:-}"
   # shellcheck disable=SC1090
   eval "$(fnm env --shell=bash)"
@@ -208,7 +212,7 @@ ensure_toolchain_user_local() {
   focus_export_toolchain_path
   hash -r 2>/dev/null || true
 
-  verify_node_pnpm || die "Node/pnpm не установились локально. Лог: bash -x scripts/bootstrap.sh 2>&1 | tee ~/focus-install.log"
+  verify_node_pnpm || die "Node/pnpm не установились. Лог: bash -x scripts/bootstrap.sh 2>&1 | tee ~/focus-install.log"
 }
 
 ensure_toolchain() {
@@ -224,15 +228,15 @@ ensure_toolchain() {
     return 0
   fi
 
-  if brew_usable && ensure_toolchain_brew && verify_node_pnpm; then
+  if ! brew_usable; then
+    log "Node/pnpm → ~/ (Homebrew недоступен этому пользователю)"
+  elif ! ensure_toolchain_brew || ! verify_node_pnpm; then
+    warn "Homebrew не сработал — ставлю Node/pnpm в ~/"
+  else
     ok "Node $(node -v)"
     ok "pnpm $(pnpm -v)"
     command -v terminal-notifier >/dev/null 2>&1 && ok "terminal-notifier" || warn "terminal-notifier нет"
     return 0
-  fi
-
-  if brew_usable; then
-    warn "Homebrew есть, но этому пользователю недоступен (чужая установка?) — ставлю в ~/"
   fi
 
   ensure_toolchain_user_local
