@@ -2,7 +2,7 @@
 # Периодический снимок экрана: пропуск при простое, JPEG 1280px quality 40%, LLM-анализ.
 set -euo pipefail
 
-export PATH="$HOME/.nvm/versions/node/$(ls "$HOME/.nvm/versions/node/" 2>/dev/null | tail -1)/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:$PATH"
+export PATH="${HOME}/.local/share/fnm/aliases/default/bin:${HOME}/Library/pnpm:${HOME}/.local/share/pnpm:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:${PATH:-}"
 
 : "${FOCUS_TRACK_IDLE_SEC:=300}"
 : "${FOCUS_TRACK_ROOT:=$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")/.." && pwd)}"

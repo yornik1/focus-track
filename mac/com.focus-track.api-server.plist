@@ -11,13 +11,13 @@
 		<key>DATABASE_PATH</key>
 		<string>/path/to/focus-track/focus.db</string>
 		<key>PORT</key>
-		<string>5001</string>
+		<string>__FOCUS_PORT__</string>
 	</dict>
 	<key>ProgramArguments</key>
 	<array>
 		<string>/bin/bash</string>
 		<string>-lc</string>
-		<string>export PATH="$HOME/.nvm/versions/node/$(ls $HOME/.nvm/versions/node/ 2>/dev/null | tail -1)/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:$PATH" && cd "$FOCUS_TRACK_ROOT" && pnpm -w run dev</string>
+		<string>export PATH="$HOME/.local/share/fnm/aliases/default/bin:$HOME/Library/pnpm:$HOME/.local/share/pnpm:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:$PATH" &amp;&amp; cd "$FOCUS_TRACK_ROOT" &amp;&amp; pnpm -w run dev</string>
 	</array>
 	<key>RunAtLoad</key>
 	<true/>

@@ -6,8 +6,11 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 mkdir -p "$REPO_ROOT/data/logs"
 
+PORT="$(grep '^PORT=' "$REPO_ROOT/.env" 2>/dev/null | cut -d= -f2- | tr -d ' "' | tr -d "'" || true)"
+PORT="${PORT:-5001}"
+
 if [[ ! -f "$REPO_ROOT/focus-app-settings.json" ]]; then
-  echo "ℹ️  focus-app-settings.json ещё нет — настройте Gemini в дашборде: Settings → Test connection"
+  echo "ℹ️  Gemini key — в дашборде: http://localhost:${PORT}/#settings"
   echo ""
 fi
 
@@ -16,7 +19,9 @@ install_plist() {
   local src="$REPO_ROOT/mac/${name}.plist"
   local dst="$HOME/Library/LaunchAgents/${name}.plist"
 
-  sed -e "s|/path/to/focus-track|$REPO_ROOT|g" "$src" > "$dst"
+  sed -e "s|/path/to/focus-track|$REPO_ROOT|g" \
+      -e "s|__FOCUS_PORT__|$PORT|g" \
+      "$src" > "$dst"
   launchctl unload "$dst" 2>/dev/null || true
   pkill -f "${name}" 2>/dev/null || true
   sleep 1
@@ -31,7 +36,7 @@ install_plist "com.focus-track.api-server"
 echo ""
 echo "Готово! После ребута всё запустится автоматически."
 echo ""
-echo "  Дашборд: http://localhost:5001"
+echo "  Дашборд: http://localhost:${PORT}/#settings"
 echo "  Логи:    $REPO_ROOT/data/logs/"
 echo ""
 echo "  Screen Recording: добавьте mac/bin/focus-capture в"

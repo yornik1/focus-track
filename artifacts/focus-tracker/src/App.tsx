@@ -1,4 +1,4 @@
-import { useState, useLayoutEffect, useRef } from "react";
+import { useState, useLayoutEffect, useRef, useEffect } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import TodayPage from "@/pages/Today";
 import CalendarPage from "@/pages/Calendar";
@@ -18,16 +18,30 @@ const TABS: { id: Tab; label: string }[] = [
   { id: "settings", label: "Settings" },
 ];
 
+function tabFromHash(): Tab {
+  const id = window.location.hash.replace(/^#/, "");
+  return TABS.some((t) => t.id === id) ? (id as Tab) : "today";
+}
+
 function Layout() {
-  const [activeTab, setActiveTab] = useState<Tab>("today");
+  const [activeTab, setActiveTab] = useState<Tab>(tabFromHash);
   const mainRef = useRef<HTMLElement>(null);
+
+  useEffect(() => {
+    const onHashChange = () => setActiveTab(tabFromHash());
+    window.addEventListener("hashchange", onHashChange);
+    return () => window.removeEventListener("hashchange", onHashChange);
+  }, []);
 
   useLayoutEffect(() => {
     window.scrollTo(0, 0);
     mainRef.current?.scrollTo(0, 0);
   }, [activeTab]);
 
-  const selectTab = (tab: Tab) => setActiveTab(tab);
+  const selectTab = (tab: Tab) => {
+    window.location.hash = tab;
+    setActiveTab(tab);
+  };
 
   return (
     <div className="min-h-screen bg-background text-foreground flex flex-col">

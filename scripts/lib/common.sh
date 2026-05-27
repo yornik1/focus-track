@@ -17,3 +17,9 @@ notify() {
     terminal-notifier -title "$title" -message "$message" 2>/dev/null || true
   fi
 }
+
+read_dashboard_port() {
+  # shellcheck source=port.sh
+  source "$(dirname "${BASH_SOURCE[0]}")/port.sh"
+  read_env_port "$REPO_ROOT" 5001
+}

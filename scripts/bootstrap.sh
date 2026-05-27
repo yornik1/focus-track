@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Полная установка focus-track на macOS.
+# Полная установка focus-track на macOS. Одна команда: make focus-great-again
 
 set -euo pipefail
 
@@ -15,6 +15,7 @@ done
 log() { echo "→ $*"; }
 ok()  { echo "  ✓ $*"; }
 warn(){ echo "  ⚠ $*"; }
+die() { echo ""; echo "✗ $*"; echo ""; exit 1; }
 
 run() {
   if $DRY_RUN; then
@@ -24,111 +25,246 @@ run() {
   fi
 }
 
-ensure_macos() {
-  if [[ "$(uname -s)" != "Darwin" ]]; then
-    echo "Focus Tracker поддерживает только macOS."
-    exit 1
+# ZIP из браузера: macOS ставит quarantine — скрипты могут не запускаться
+clear_quarantine() {
+  if $DRY_RUN; then
+    return 0
+  fi
+  if xattr -l "$REPO_ROOT" 2>/dev/null | grep -q com.apple.quarantine; then
+    log "Снимаю quarantine (скачано из браузера)..."
+    xattr -dr com.apple.quarantine "$REPO_ROOT" 2>/dev/null || true
   fi
 }
 
-ensure_git() {
-  if ! command -v git >/dev/null 2>&1; then
-    echo "Нужен git. Установите Xcode Command Line Tools:"
-    echo "  xcode-select --install"
-    exit 1
+ensure_network() {
+  if $DRY_RUN; then
+    return 0
   fi
+  if ! curl -fsSL --max-time 10 https://registry.npmjs.org/pnpm/-/pnpm-10.0.0.tgz -o /dev/null 2>/dev/null; then
+    die "Нет интернета или npm registry недоступен. Проверьте сеть и VPN."
+  fi
+  ok "интернет"
+}
+
+ensure_port() {
+  # shellcheck source=lib/port.sh
+  source "$(dirname "$0")/lib/port.sh"
+  if $DRY_RUN; then
+    FOCUS_PORT=5001
+    ok "порт $FOCUS_PORT"
+    return 0
+  fi
+  if ! FOCUS_PORT="$(find_free_port "$REPO_ROOT" 5001 5010)"; then
+    die "Нет свободного порта 5001–5010"
+  fi
+  write_env_port "$REPO_ROOT" "$FOCUS_PORT"
+  if [[ "$FOCUS_PORT" != "5001" ]]; then
+    warn "5001 занят — дашборд на порту $FOCUS_PORT"
+  fi
+  ok "порт $FOCUS_PORT"
+}
+
+# Homebrew часто ставится, но не попадает в PATH текущей сессии
+setup_brew_path() {
+  if command -v brew >/dev/null 2>&1; then
+    return 0
+  fi
+  if [[ -x /opt/homebrew/bin/brew ]]; then
+    eval "$(/opt/homebrew/bin/brew shellenv)"
+  elif [[ -x /usr/local/bin/brew ]]; then
+    eval "$(/usr/local/bin/brew shellenv)"
+  fi
+}
+
+ensure_macos() {
+  if [[ "$(uname -s)" != "Darwin" ]]; then
+    die "Focus Tracker работает только на macOS."
+  fi
+}
+
+# git + swiftc — из Xcode Command Line Tools (окно macOS, без ссылок)
+ensure_xcode_clt() {
+  if command -v swiftc >/dev/null 2>&1 && xcode-select -p >/dev/null 2>&1; then
+    ok "Xcode Command Line Tools"
+    return 0
+  fi
+  if $DRY_RUN; then
+    log "Xcode CLT (окно Install)"
+    return 0
+  fi
+  echo ""
+  echo "  Сейчас macOS покажет окно «Command Line Tools»."
+  echo "  Нажмите «Install» и дождитесь окончания."
+  echo "  Потом снова: make focus-great-again"
+  echo ""
+  xcode-select --install 2>/dev/null || true
+  die "Дождитесь установки Command Line Tools и запустите make focus-great-again ещё раз."
+}
+
+# Homebrew — только если доступен. Без admin не ставим (нужен пароль).
+brew_usable() {
+  setup_brew_path
+  command -v brew >/dev/null 2>&1 || return 1
+  brew --version >/dev/null 2>&1
+}
+
+user_is_admin() {
+  groups 2>/dev/null | grep -qE '(admin|wheel)' || [[ "$(id -u)" -eq 0 ]]
 }
 
 ensure_homebrew() {
-  if command -v brew >/dev/null 2>&1; then
+  if brew_usable; then
     ok "Homebrew"
     return 0
   fi
-  warn "Homebrew не найден — понадобится для Node и terminal-notifier"
   if $DRY_RUN; then
-    log "Установка Homebrew (интерактивно)"
+    log "Homebrew (если admin)"
     return 0
   fi
-  read -r -p "Установить Homebrew? [Y/n] " ans
-  if [[ "${ans:-Y}" =~ ^[Yy]$ ]]; then
-    /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
-    if [[ -x /opt/homebrew/bin/brew ]]; then
-      eval "$(/opt/homebrew/bin/brew shellenv)"
-    elif [[ -x /usr/local/bin/brew ]]; then
-      eval "$(/usr/local/bin/brew shellenv)"
-    fi
+  if ! user_is_admin; then
+    warn "Homebrew недоступен (нет прав admin) — Node/pnpm поставлю в ~/"
+    return 0
+  fi
+  log "Ставлю Homebrew (macOS один раз спросит пароль admin)..."
+  NONINTERACTIVE=1 run /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+  setup_brew_path
+  if brew_usable; then
+    ok "Homebrew"
   else
-    echo "Без Homebrew нужен Node ≥ 20 и pnpm в PATH."
+    warn "Homebrew не установился — продолжаю без него"
   fi
 }
 
-ensure_node() {
-  if command -v node >/dev/null 2>&1; then
-    ver=$(node -v | tr -d 'v' | cut -d. -f1)
-    if [[ "$ver" -ge 20 ]]; then
-      ok "Node $(node -v)"
-      return 0
-    fi
-    warn "Node $(node -v) — нужен ≥ 20"
-  fi
-  if command -v brew >/dev/null 2>&1; then
-    log "Устанавливаю Node 20 через Homebrew..."
-    run brew install node@20
-    if [[ -d /opt/homebrew/opt/node@20/bin ]]; then
-      export PATH="/opt/homebrew/opt/node@20/bin:$PATH"
-    elif [[ -d /usr/local/opt/node@20/bin ]]; then
-      export PATH="/usr/local/opt/node@20/bin:$PATH"
-    fi
-  else
-    echo "Установите Node ≥ 20: https://nodejs.org"
-    exit 1
-  fi
-  ok "Node $(node -v)"
+verify_node_pnpm() {
+  focus_export_toolchain_path
+  hash -r 2>/dev/null || true
+
+  command -v node >/dev/null 2>&1 || return 1
+  command -v pnpm >/dev/null 2>&1 || return 1
+
+  local ver
+  ver=$(node -v | tr -d 'v' | cut -d. -f1)
+  [[ "$ver" -ge 20 ]]
 }
 
-ensure_pnpm() {
-  export PATH="$HOME/.local/share/pnpm:$PATH"
-  if command -v pnpm >/dev/null 2>&1; then
+# Node + pnpm через Homebrew (если brew работает у этого юзера)
+ensure_toolchain_brew() {
+  local missing=()
+  focus_export_toolchain_path
+  command -v node >/dev/null 2>&1 || missing+=(node)
+  command -v pnpm >/dev/null 2>&1 || missing+=(pnpm)
+
+  if [[ ${#missing[@]} -gt 0 ]]; then
+    log "Ставлю через Homebrew: ${missing[*]}..."
+    run brew install "${missing[@]}"
+    setup_brew_path
+    hash -r 2>/dev/null || true
+  fi
+
+  if ! brew_usable; then
+    return 1
+  fi
+
+  if command -v terminal-notifier >/dev/null 2>&1; then
+    :
+  else
+    run brew install terminal-notifier 2>/dev/null || warn "terminal-notifier пропущен"
+  fi
+
+  verify_node_pnpm
+}
+
+# Node + pnpm в ~/ — без admin, без Homebrew (второй юзер на Mac, корп. ноут)
+ensure_toolchain_user_local() {
+  if $DRY_RUN; then
+    log "Node/pnpm → ~/.local (fnm)"
+    return 0
+  fi
+
+  log "Ставлю Node/pnpm в домашнюю папку (admin не нужен)..."
+
+  export FNM_DIR="${HOME}/.local/share/fnm"
+  export FNM_MULTISHELL_PATH="${FNM_DIR}/aliases/default"
+  mkdir -p "${FNM_DIR}"
+
+  if [[ ! -x "${FNM_DIR}/fnm" ]]; then
+    run curl -fsSL https://fnm.vercel.app/install | bash -s -- --install-dir "${FNM_DIR}" --skip-shell
+  fi
+
+  export PATH="${FNM_DIR}:${PATH:-}"
+  # shellcheck disable=SC1090
+  eval "$(fnm env --shell=bash)"
+
+  if ! fnm list 2>/dev/null | grep -qE '\b22\b'; then
+    run fnm install 22
+  fi
+  run fnm default 22
+  eval "$(fnm env --shell=bash)"
+
+  if ! command -v pnpm >/dev/null 2>&1; then
+    run npm install -g pnpm@10
+  fi
+
+  focus_export_toolchain_path
+  hash -r 2>/dev/null || true
+
+  verify_node_pnpm || die "Node/pnpm не установились локально. Лог: bash -x scripts/bootstrap.sh 2>&1 | tee ~/focus-install.log"
+}
+
+ensure_toolchain() {
+  # shellcheck source=lib/toolchain-path.sh
+  source "$(dirname "$0")/lib/toolchain-path.sh"
+  focus_export_toolchain_path
+  hash -r 2>/dev/null || true
+
+  if verify_node_pnpm; then
+    ok "Node $(node -v)"
     ok "pnpm $(pnpm -v)"
+    command -v terminal-notifier >/dev/null 2>&1 && ok "terminal-notifier" || warn "terminal-notifier нет (уведомления pause/resume отключены)"
     return 0
   fi
-  log "Включаю pnpm через corepack..."
-  run corepack enable
-  run corepack prepare pnpm@latest --activate
+
+  if brew_usable && ensure_toolchain_brew && verify_node_pnpm; then
+    ok "Node $(node -v)"
+    ok "pnpm $(pnpm -v)"
+    command -v terminal-notifier >/dev/null 2>&1 && ok "terminal-notifier" || warn "terminal-notifier нет"
+    return 0
+  fi
+
+  if brew_usable; then
+    warn "Homebrew есть, но этому пользователю недоступен (чужая установка?) — ставлю в ~/"
+  fi
+
+  ensure_toolchain_user_local
+  ok "Node $(node -v)"
   ok "pnpm $(pnpm -v)"
 }
 
-ensure_terminal_notifier() {
-  if command -v terminal-notifier >/dev/null 2>&1; then
-    ok "terminal-notifier"
-    return 0
-  fi
-  if command -v brew >/dev/null 2>&1; then
-    log "Устанавливаю terminal-notifier (уведомления pause/resume)..."
-    run brew install terminal-notifier
-  fi
-}
-
 install_deps() {
-  log "pnpm install..."
+  log "Зависимости проекта (первый раз 5–15 мин, не прерывайте)..."
   cd "$REPO_ROOT"
-  run pnpm install --frozen-lockfile
+  if ! run pnpm install --frozen-lockfile; then
+    die "pnpm install упал. Запустите make focus-great-again ещё раз. Лог: bash -x scripts/bootstrap.sh 2>&1 | tee ~/focus-install.log"
+  fi
   ok "зависимости"
 }
 
 push_db() {
-  log "Схема БД..."
+  log "База данных..."
   cd "$REPO_ROOT"
   run pnpm --filter @workspace/db push
   ok "focus.db"
 }
 
 compile_capture() {
-  log "Компиляция focus-capture..."
+  log "Утилита захвата экрана..."
   mkdir -p "$REPO_ROOT/mac/bin"
   if $DRY_RUN; then
     echo "  [dry-run] swiftc ..."
     return 0
+  fi
+  if ! command -v swiftc >/dev/null 2>&1; then
+    die "Нет swiftc — установите Command Line Tools (make focus-great-again запустит окно Install)"
   fi
   swiftc -O -o "$REPO_ROOT/mac/bin/focus-capture" \
     "$REPO_ROOT/mac/bin/focus-capture.swift" \
@@ -143,53 +279,51 @@ ensure_env() {
   fi
   if [[ -f "$REPO_ROOT/.env.example" ]]; then
     cp "$REPO_ROOT/.env.example" "$REPO_ROOT/.env"
-    ok ".env создан из .env.example"
+    ok ".env создан"
   fi
 }
 
 request_screen_recording() {
-  log "Проверка Screen Recording..."
+  log "Разрешение Screen Recording..."
   local test="/tmp/focus-perm-test.jpg"
   if $DRY_RUN; then
-    echo "  [dry-run] focus-capture + open System Settings"
+    echo "  [dry-run] focus-capture + System Settings"
     return 0
   fi
   "$REPO_ROOT/mac/bin/focus-capture" "$test" 640 0.4 2>/dev/null || true
   if [[ -s "$test" ]]; then
-    ok "Screen Recording работает"
+    ok "Screen Recording OK"
     rm -f "$test"
     return 0
   fi
   rm -f "$test"
-  warn "Screen Recording не выдан — открою System Settings"
   open "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture" 2>/dev/null || true
   echo ""
-  echo "  Добавьте в список: $REPO_ROOT/mac/bin/focus-capture"
-  echo "  System Settings → Privacy & Security → Screen Recording"
+  warn "Добавьте в список файл (кнопка +):"
+  echo "  $REPO_ROOT/mac/bin/focus-capture"
   echo ""
 }
 
 install_launchagents() {
-  log "LaunchAgents..."
+  log "Фоновые сервисы..."
   run "$REPO_ROOT/scripts/setup-launchagent.sh"
 }
 
 print_done() {
+  local url="http://localhost:${FOCUS_PORT:-5001}/#settings"
   echo ""
   echo "============================================"
-  echo "  Focus Tracker установлен"
+  echo "  Готово"
   echo "============================================"
   echo ""
-  echo "  Дашборд:  http://localhost:5001"
-  echo "  Логи:     $REPO_ROOT/data/logs/"
+  echo "  Настройка Gemini (откроется в браузере):"
+  echo "  $url"
   echo ""
-  echo "  1. Откройте дашборд в браузере"
-  echo "  2. Settings → вставьте Gemini API key → Test connection"
-  echo "  3. make diagnose — проверка"
-  echo ""
-  echo "  Пауза:       make pause MIN=10"
-  echo "  Стоп сегодня: make stop-today"
-  echo "  Бэкап:       make backup"
+  if ! $DRY_RUN; then
+    sleep 2
+    open "$url" 2>/dev/null || true
+  fi
+  echo "  Проверка: make diagnose"
   echo ""
 }
 
@@ -200,16 +334,17 @@ main() {
   echo ""
 
   ensure_macos
-  ensure_git
+  clear_quarantine
+  ensure_network
+  ensure_xcode_clt
   ensure_homebrew
-  ensure_node
-  ensure_pnpm
-  ensure_terminal_notifier
+  ensure_toolchain
   install_deps
   push_db
   compile_capture
   ensure_env
   request_screen_recording
+  ensure_port
   install_launchagents
   print_done
 }

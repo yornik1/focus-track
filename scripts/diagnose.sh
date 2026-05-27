@@ -102,10 +102,12 @@ fi
 echo ""
 
 echo "=== 8. API сервер ==="
-if curl -sf "http://localhost:5001/api/settings" >/dev/null 2>&1; then
-  echo "✅ http://localhost:5001 отвечает"
+DASH_PORT="$(read_dashboard_port)"
+if curl -sf "http://localhost:${DASH_PORT}/api/settings" >/dev/null 2>&1; then
+  echo "✅ http://localhost:${DASH_PORT} отвечает"
+  echo "   Settings: http://localhost:${DASH_PORT}/#settings"
 else
-  echo "❌ Дашборд не отвечает — make dev или LaunchAgent com.focus-track.api-server"
+  echo "❌ Дашборд не отвечает на :${DASH_PORT} — make dev или LaunchAgent"
 fi
 echo ""
 
