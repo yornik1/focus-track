@@ -5,6 +5,7 @@ set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 mkdir -p "$REPO_ROOT/data/logs"
+mkdir -p "$HOME/Library/LaunchAgents"
 
 PORT="$(grep '^PORT=' "$REPO_ROOT/.env" 2>/dev/null | cut -d= -f2- | tr -d ' "' | tr -d "'" || true)"
 PORT="${PORT:-5001}"
