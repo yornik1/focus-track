@@ -2,7 +2,16 @@
 # Выбор порта дашборда и запись в .env
 
 port_is_free() {
-  ! lsof -i ":$1" -sTCP:LISTEN >/dev/null 2>&1
+  local port="$1"
+  # Кто-то слушает порт (любой пользователь на Mac)
+  if lsof -nP -iTCP:"${port}" -sTCP:LISTEN >/dev/null 2>&1; then
+    return 1
+  fi
+  # Уже отвечает focus-track API (на случай если lsof не видит)
+  if curl -sf --max-time 1 "http://127.0.0.1:${port}/api/settings" >/dev/null 2>&1; then
+    return 1
+  fi
+  return 0
 }
 
 read_env_port() {
@@ -39,14 +48,9 @@ find_free_port() {
   local repo="$1"
   local start="${2:-5001}"
   local end="${3:-5010}"
-  local existing p
+  local p
 
-  existing="$(read_env_port "$repo" "$start")"
-  if port_is_free "$existing"; then
-    echo "$existing"
-    return 0
-  fi
-
+  # Всегда сканируем диапазон — не доверяем PORT=5001 из .env.example
   for ((p = start; p <= end; p++)); do
     if port_is_free "$p"; then
       echo "$p"
