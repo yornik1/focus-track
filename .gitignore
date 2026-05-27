@@ -186,4 +186,4 @@ Thumbs.db
 *.db-wal
 focus-app-settings.json
 data/
-mac/bin/focus-capture
+# focus-capture — в репо (universal); пересборка: make build-capture

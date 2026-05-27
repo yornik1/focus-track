@@ -9,6 +9,9 @@ help: ## Список целей
 focus-great-again: ## Полная установка (brew/node/pnpm → db → capture → permissions → launchagent)
 	bash ./scripts/bootstrap.sh
 
+build-capture: ## Собрать universal focus-capture (нужен swiftc, для релиза)
+	bash ./scripts/build-focus-capture.sh
+
 dev: ## Запуск дашборда локально
 	pnpm -w run dev
 

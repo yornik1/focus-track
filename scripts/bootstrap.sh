@@ -82,10 +82,9 @@ ensure_macos() {
   fi
 }
 
-# git + swiftc — из Xcode Command Line Tools (окно macOS, без ссылок)
+# git + swiftc — только если нужна пересборка focus-capture (в релизе бинарник уже в ZIP)
 ensure_xcode_clt() {
   if command -v swiftc >/dev/null 2>&1 && xcode-select -p >/dev/null 2>&1; then
-    ok "Xcode Command Line Tools"
     return 0
   fi
   if $DRY_RUN; then
@@ -93,12 +92,26 @@ ensure_xcode_clt() {
     return 0
   fi
   echo ""
-  echo "  Сейчас macOS покажет окно «Command Line Tools»."
-  echo "  Нажмите «Install» и дождитесь окончания."
-  echo "  Потом снова: make focus-great-again"
+  echo "  Нужны Xcode Command Line Tools — только для сборки focus-capture из исходников."
+  echo "  В релизном ZIP бинарник уже есть; если его нет — macOS покажет окно Install."
   echo ""
   xcode-select --install 2>/dev/null || true
   die "Дождитесь установки Command Line Tools и запустите make focus-great-again ещё раз."
+}
+
+# Бинарник из релиза подходит для текущей архитектуры?
+capture_binary_usable() {
+  local bin="$REPO_ROOT/mac/bin/focus-capture"
+  [[ -f "$bin" && -x "$bin" ]] || return 1
+  local host
+  host="$(uname -m)"
+  local info
+  info="$(file -b "$bin" 2>/dev/null || true)"
+  case "$host" in
+    arm64)  [[ "$info" == *arm64* ]] ;;
+    x86_64) [[ "$info" == *x86_64* ]] ;;
+    *)      return 1 ;;
+  esac
 }
 
 # Homebrew — только если доступен. Без admin не ставим (нужен пароль).
@@ -264,16 +277,22 @@ compile_capture() {
   log "Утилита захвата экрана..."
   mkdir -p "$REPO_ROOT/mac/bin"
   if $DRY_RUN; then
-    echo "  [dry-run] swiftc ..."
+    echo "  [dry-run] focus-capture"
     return 0
   fi
-  if ! command -v swiftc >/dev/null 2>&1; then
-    die "Нет swiftc — установите Command Line Tools (make focus-great-again запустит окно Install)"
+  if capture_binary_usable; then
+    ok "mac/bin/focus-capture (из релиза)"
+    return 0
   fi
+  ensure_xcode_clt
+  if ! command -v swiftc >/dev/null 2>&1; then
+    die "Нет focus-capture и нет swiftc — скачайте релизный ZIP или установите Command Line Tools"
+  fi
+  log "Сборка focus-capture из исходников..."
   swiftc -O -o "$REPO_ROOT/mac/bin/focus-capture" \
     "$REPO_ROOT/mac/bin/focus-capture.swift" \
     -framework Cocoa -framework ScreenCaptureKit
-  ok "mac/bin/focus-capture"
+  ok "mac/bin/focus-capture (собран)"
 }
 
 ensure_env() {
@@ -347,7 +366,6 @@ main() {
   ensure_macos
   clear_quarantine
   ensure_network
-  ensure_xcode_clt
   ensure_homebrew
   ensure_toolchain
   install_deps

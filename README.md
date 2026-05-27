@@ -4,13 +4,31 @@
 
 ## Установка
 
-1. Скачайте ZIP на GitHub (**Code → Download ZIP**), распакуйте.
-2. Terminal → перейдите в папку:
+### Два пользователя на одном Mac (mich + claw)
+
+macOS **закрывает домашние папки** между пользователями: `/Users/mich/Downloads` для `claw` не существует. ZIP лежит там, куда у второго юзера **нет прав на чтение** — Finder и Archive Utility не смогут его распаковать, отсюда «нет доступа к разархивации». Это системная изоляция, не баг архива.
+
+**Что делать:**
+
+1. **claw скачивает сам** — войти под `claw`, GitHub → Download ZIP → свой `~/Downloads`, распаковать как обычно.
+2. **Через общую папку** — mich кладёт ZIP туда, где оба имеют доступ:
    ```bash
-   cd ~/Downloads/focus-track-0.0.2
+   cp ~/Downloads/focus-track-*.zip /Users/Shared/
    ```
-3. Одна команда:
+   Под `claw`: Finder → **Macintosh HD → Users → Shared** → двойной клик по ZIP.  
+   Или Terminal:
    ```bash
+   cd /Users/Shared && unzip -o focus-track-*.zip && mv focus-track-* ~/focus-track
+   ```
+
+У каждого пользователя — **своя** копия в `~/focus-track`, свой порт, свои ключи.
+
+### Обычная установка
+
+1. Скачайте ZIP на GitHub (**Code → Download ZIP**), распакуйте.
+2. Terminal:
+   ```bash
+   cd ~/Downloads/focus-track-0.0.7
    make focus-great-again
    ```
    Нет `make`? → `bash scripts/bootstrap.sh`
@@ -28,7 +46,7 @@
 
 macOS может попросить:
 - пароль admin (только Homebrew, можно без него);
-- **Command Line Tools** (окно Install — один раз на Mac);
+- **Command Line Tools** — только если в ZIP нет `mac/bin/focus-capture` (в релизах он уже есть);
 - **Screen Recording** для `mac/bin/focus-capture`.
 
 **Не используйте `sudo brew`.**
