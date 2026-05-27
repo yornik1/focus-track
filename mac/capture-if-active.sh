@@ -2,7 +2,10 @@
 # Периодический снимок экрана: пропуск при простое, JPEG 1280px quality 40%, LLM-анализ.
 set -euo pipefail
 
-export PATH="${HOME}/.local/share/fnm/aliases/default/bin:${HOME}/Library/pnpm:${HOME}/.local/share/pnpm:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:${PATH:-}"
+_mac_dir="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
+# shellcheck source=../scripts/lib/toolchain-path.sh
+source "${_mac_dir}/../scripts/lib/toolchain-path.sh"
+focus_export_toolchain_path
 
 : "${FOCUS_TRACK_IDLE_SEC:=300}"
 : "${FOCUS_TRACK_ROOT:=$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")/.." && pwd)}"
@@ -77,11 +80,17 @@ if [[ "${analyze_exit}" -ne 0 ]]; then
     count=$((count + 1))
     echo "${count}" > "${FAIL_COUNTER}"
 
-    # Парсим JSON из stderr (provider, model, error)
+    # Парсим JSON из stderr (provider, model, error) или берём текст ошибки
     err_json=$(tail -1 "${ANALYZE_ERR_FILE}" 2>/dev/null || echo "")
-    err_provider=$(echo "${err_json}" | grep -o '"provider":"[^"]*"' | cut -d'"' -f4 || echo "unknown")
-    err_model=$(echo "${err_json}" | grep -o '"model":"[^"]*"' | cut -d'"' -f4 || echo "unknown")
-    err_msg=$(echo "${err_json}" | grep -o '"error":"[^"]*"' | cut -d'"' -f4 || echo "неизвестная ошибка")
+    err_provider=$(echo "${err_json}" | grep -o '"provider":"[^"]*"' | cut -d'"' -f4 || echo "")
+    err_model=$(echo "${err_json}" | grep -o '"model":"[^"]*"' | cut -d'"' -f4 || echo "")
+    err_msg=$(echo "${err_json}" | grep -o '"error":"[^"]*"' | cut -d'"' -f4 || echo "")
+    if [[ -z "${err_provider}" ]]; then err_provider="unknown"; fi
+    if [[ -z "${err_model}" ]]; then err_model="unknown"; fi
+    if [[ -z "${err_msg}" ]]; then
+      err_msg=$(tail -1 "${ANALYZE_ERR_FILE}" 2>/dev/null | head -c 200)
+      [[ -z "${err_msg}" ]] && err_msg="неизвестная ошибка"
+    fi
 
     echo "$(date): Анализ провалился (${count}/${FAIL_NOTIFY_THRESHOLD}) provider=${err_provider} model=${err_model} error=${err_msg}" >> "${LOG_FILE}"
 
