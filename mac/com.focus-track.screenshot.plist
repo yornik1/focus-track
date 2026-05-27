@@ -14,10 +14,6 @@
 		<string>120</string>
 		<key>FOCUS_TRACK_TICK_MAX_SEC</key>
 		<string>600</string>
-		<key>FOCUS_PROVIDER</key>
-		<string>gemini</string>
-		<key>GEMINI_API_KEY</key>
-		<string></string>
 		<key>DATABASE_PATH</key>
 		<string>/path/to/focus-track/focus.db</string>
 	</dict>

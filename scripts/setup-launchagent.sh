@@ -6,15 +6,8 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 mkdir -p "$REPO_ROOT/data/logs"
 
-# Читаем GEMINI_API_KEY из .env если есть
-if [ -f "$REPO_ROOT/.env" ]; then
-  GEMINI_API_KEY=$(grep '^GEMINI_API_KEY=' "$REPO_ROOT/.env" | cut -d= -f2- | tr -d '"' | tr -d "'")
-  export GEMINI_API_KEY
-fi
-
-if [ -z "${GEMINI_API_KEY:-}" ]; then
-  echo "⚠️  GEMINI_API_KEY не найден в .env (опционально)"
-  echo "   Можно настроить позже через дашборд: Settings → Test connection"
+if [[ ! -f "$REPO_ROOT/focus-app-settings.json" ]]; then
+  echo "ℹ️  focus-app-settings.json ещё нет — настройте Gemini в дашборде: Settings → Test connection"
   echo ""
 fi
 
@@ -41,5 +34,5 @@ echo ""
 echo "  Дашборд: http://localhost:5001"
 echo "  Логи:    $REPO_ROOT/data/logs/"
 echo ""
-echo "⚠️  Screen Recording: добавьте mac/bin/focus-capture в"
-echo "   System Settings → Privacy → Screen Recording"
+echo "  Screen Recording: добавьте mac/bin/focus-capture в"
+echo "  System Settings → Privacy → Screen Recording"

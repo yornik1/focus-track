@@ -13,7 +13,7 @@ const plistPath = path.join(repoRoot, 'mac', 'com.focus-track.screenshot.plist')
 const capturePath = path.join(repoRoot, 'mac', 'capture-if-active.sh');
 const loopPath = path.join(repoRoot, 'mac', 'capture-random-loop.sh');
 
-test('LaunchAgent plist: KeepAlive + рандомный тикер; capture — screencapture и idle', () => {
+test('LaunchAgent plist: KeepAlive + рандомный тикер; capture — focus-capture и idle', () => {
   assert.ok(fs.existsSync(plistPath), `Ожидался файл: ${plistPath}`);
   assert.ok(fs.existsSync(capturePath), `Ожидался файл: ${capturePath}`);
   assert.ok(fs.existsSync(loopPath), `Ожидался файл: ${loopPath}`);
@@ -33,12 +33,12 @@ test('LaunchAgent plist: KeepAlive + рандомный тикер; capture — 
     plistXml.includes('FOCUS_TRACK_TICK_MIN_SEC') && plistXml.includes('FOCUS_TRACK_TICK_MAX_SEC'),
     'Границы паузы задаются переменными окружения',
   );
+  assert.ok(!plistXml.includes('GEMINI_API_KEY'), 'Gemini key хранится в focus-app-settings.json, не в plist');
 
   const loop = fs.readFileSync(loopPath, 'utf8');
   assert.ok(loop.includes('RANDOM') && loop.includes('sleep'), 'Ожидался sleep с RANDOM между min и max');
 
   const sh = fs.readFileSync(capturePath, 'utf8');
-  assert.ok(sh.includes('screencapture'), 'Скрипт должен вызывать screencapture');
-  assert.ok(sh.includes('-t jpg') || (sh.includes('-t') && sh.includes('jpg')), 'Формат вывода — JPEG');
+  assert.ok(sh.includes('focus-capture'), 'Скрипт должен вызывать focus-capture (Swift/ScreenCaptureKit)');
   assert.ok(sh.includes('ioreg') && sh.includes('HIDIdleTime'), 'Проверка простоя через ioreg');
 });
