@@ -416,7 +416,7 @@ router.post("/settings/test", async (req, res) => {
   // Если тест успешен — сохраняем provider, token и model в settings
   if (result.success) {
     const current = readAppSettings() ?? getDefaultAppSettings();
-    const modelStr = model != null ? String(model).trim() : (p === "ollama" ? "llava:7b" : "gemini-2.5-flash");
+    const modelStr = model != null ? String(model).trim() : (p === "ollama" ? "llava:7b" : "gemini-flash-lite-latest");
     writeAppSettings({
       ...current,
       provider: p as "gemini" | "ollama",

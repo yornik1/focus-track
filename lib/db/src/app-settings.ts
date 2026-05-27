@@ -16,6 +16,9 @@ export interface AppSettings {
 
 const SETTINGS_FILENAME = "focus-app-settings.json";
 
+/** Модель Gemini по умолчанию для новых установок и fallback в JSON. */
+export const DEFAULT_GEMINI_MODEL = "gemini-flash-lite-latest";
+
 const ALLOWED_INTERVALS = new Set<AppSettings["screenshot_interval"]>([1, 2, 5, 10]);
 
 const ANALYSIS_PROMPT_HEADER = `Analyze this screenshot. What is the user doing?
@@ -52,7 +55,7 @@ export function getDefaultAppSettings(): AppSettings {
     fromEnv === "ollama"
       ? (process.env.OLLAMA_HOST ?? "")
       : (process.env.GEMINI_API_KEY ?? "");
-  const model = fromEnv === "ollama" ? "llava:7b" : "gemini-2.5-flash";
+  const model = fromEnv === "ollama" ? "llava:7b" : DEFAULT_GEMINI_MODEL;
   return {
     provider: fromEnv,
     token,
@@ -89,7 +92,7 @@ function normalizeStoredSettings(parsed: unknown): AppSettings | null {
     return null;
   }
   const token = o.token != null ? String(o.token) : "";
-  const model = o.model != null ? String(o.model) : (provider === "ollama" ? "llava:7b" : "gemini-2.5-flash");
+  const model = o.model != null ? String(o.model) : (provider === "ollama" ? "llava:7b" : DEFAULT_GEMINI_MODEL);
   const si = Number(o.screenshot_interval);
   const screenshot_interval = ALLOWED_INTERVALS.has(si as AppSettings["screenshot_interval"])
     ? (si as AppSettings["screenshot_interval"])
@@ -120,7 +123,7 @@ export function normalizeSettingsPayload(body: unknown): AppSettings {
     throw new Error("provider must be gemini or ollama");
   }
   const token = b.token != null ? String(b.token) : "";
-  const model = b.model != null ? String(b.model) : (provider === "ollama" ? "llava:7b" : "gemini-2.5-flash");
+  const model = b.model != null ? String(b.model) : (provider === "ollama" ? "llava:7b" : DEFAULT_GEMINI_MODEL);
   const si = Number(b.screenshot_interval);
   if (!ALLOWED_INTERVALS.has(si as AppSettings["screenshot_interval"])) {
     throw new Error("screenshot_interval must be 1, 2, 5, or 10");

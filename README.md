@@ -15,7 +15,7 @@
    ```
    Нет `make`? → `bash scripts/bootstrap.sh`
 
-В конце откроется браузер на **Settings** — вставьте Gemini API key → **Test connection**.
+В конце откроется браузер на **Settings** — создайте ключ на [aistudio.google.com/api-keys](https://aistudio.google.com/api-keys) (название проекта и ключа — любые), скопируйте и вставьте в поле API Token. Ключ сохранится автоматически; **Test** проверит соединение.
 
 Повторный запуск безопасен — докачает недостающее.
 

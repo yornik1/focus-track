@@ -179,7 +179,7 @@ const MOCK_TODAY: TodayStats = {
 const MOCK_SETTINGS: SettingsResponse = {
   provider: "gemini",
   token: "AIza••••••••••••••••",
-  model: "gemini-2.5-flash",
+  model: "gemini-flash-lite-latest",
   screenshot_interval: 2,
   idle_threshold: 120,
   focused_score_threshold: 6,
@@ -387,6 +387,7 @@ export interface GeminiModelOption {
 export async function fetchGeminiModels(token?: string): Promise<GeminiModelOption[]> {
   if (USE_MOCK) {
     return [
+      { id: "gemini-flash-lite-latest", displayName: "Gemini Flash Lite (latest)" },
       { id: "gemini-2.5-flash", displayName: "Gemini 2.5 Flash" },
       { id: "gemini-2.0-flash-exp", displayName: "Gemini 2.0 Flash Experimental" },
     ];

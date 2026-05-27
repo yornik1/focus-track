@@ -18,7 +18,7 @@ const PROVIDER = fromFile
   ? stored.provider
   : ((process.env.FOCUS_PROVIDER || "gemini") as "gemini" | "ollama");
 const trimmedToken = fromFile ? stored.token.trim() : "";
-const MODEL = fromFile && stored.model ? stored.model : (PROVIDER === "ollama" ? "llava:7b" : "gemini-2.5-flash");
+const MODEL = fromFile && stored.model ? stored.model : (PROVIDER === "ollama" ? "llava:7b" : "gemini-flash-lite-latest");
 const BASE_PROMPT = fromFile ? stored.prompt : DEFAULT_PROMPT;
 
 const GEMINI_API_KEY =

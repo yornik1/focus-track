@@ -313,6 +313,11 @@ install_launchagents() {
   run "$REPO_ROOT/scripts/setup-launchagent.sh"
 }
 
+print_gemini_hint() {
+  echo "  Ключ Gemini: https://aistudio.google.com/api-keys"
+  echo "  Название проекта и ключа — любые. Скопируйте ключ → вставьте в Settings."
+}
+
 print_done() {
   local url="http://localhost:${FOCUS_PORT:-5001}/#settings"
   echo ""
@@ -322,6 +327,8 @@ print_done() {
   echo ""
   echo "  Настройка Gemini (откроется в браузере):"
   echo "  $url"
+  echo ""
+  print_gemini_hint
   echo ""
   if ! $DRY_RUN; then
     sleep 2

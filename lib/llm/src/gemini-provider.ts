@@ -2,7 +2,7 @@ import { GoogleGenerativeAI } from "@google/generative-ai";
 import { normalizeCategory } from "@workspace/categories";
 import type { LLMProvider, AnalysisResult } from "./types";
 
-const FALLBACK_MODELS = ["gemini-3.1-flash-lite", "gemini-3-flash-preview", "gemini-2.5-flash", "gemini-2.0-flash-lite"];
+const FALLBACK_MODELS = ["gemini-flash-lite-latest", "gemini-3.1-flash-lite", "gemini-3-flash-preview", "gemini-2.5-flash", "gemini-2.0-flash-lite"];
 
 function isRateLimitError(err: unknown): boolean {
   if (err instanceof Error) {
@@ -16,7 +16,7 @@ export class GeminiProvider implements LLMProvider {
   private model: string;
   public usedModel: string = "";
 
-  constructor(apiKey: string, model: string = "gemini-2.5-flash") {
+  constructor(apiKey: string, model: string = "gemini-flash-lite-latest") {
     this.client = new GoogleGenerativeAI(apiKey);
     this.model = model;
   }

@@ -12,6 +12,8 @@ PORT="${PORT:-5001}"
 
 if [[ ! -f "$REPO_ROOT/focus-app-settings.json" ]]; then
   echo "ℹ️  Gemini key — в дашборде: http://localhost:${PORT}/#settings"
+  echo "   Создать ключ: https://aistudio.google.com/api-keys"
+  echo "   Название проекта и ключа — любые. Скопируйте → вставьте в Settings."
   echo ""
 fi
 
@@ -38,6 +40,7 @@ echo ""
 echo "Готово! После ребута всё запустится автоматически."
 echo ""
 echo "  Дашборд: http://localhost:${PORT}/#settings"
+echo "  Ключ Gemini: https://aistudio.google.com/api-keys"
 echo "  Логи:    $REPO_ROOT/data/logs/"
 echo ""
 echo "  Screen Recording: добавьте mac/bin/focus-capture в"

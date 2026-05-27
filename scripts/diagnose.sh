@@ -73,7 +73,8 @@ if [[ -f "$SETTINGS_FILE" ]]; then
   if [[ -n "$has_token" ]]; then
     echo "✅ focus-app-settings.json ($provider, ключ задан)"
   else
-    echo "⚠️  focus-app-settings.json есть, но token пуст — Settings → Test connection"
+    echo "⚠️  focus-app-settings.json есть, но token пуст"
+    echo "   Ключ: https://aistudio.google.com/api-keys → вставьте в Settings"
   fi
 else
   echo "⚠️  focus-app-settings.json нет — настройте Gemini в дашборде"

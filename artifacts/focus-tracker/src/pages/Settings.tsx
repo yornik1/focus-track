@@ -10,6 +10,9 @@ import {
   type SettingsResponse,
 } from "@/api";
 
+const DEFAULT_GEMINI_MODEL = "gemini-flash-lite-latest";
+const GEMINI_KEYS_URL = "https://aistudio.google.com/api-keys";
+
 function StatusDot({ alive }: { alive: boolean }) {
   return (
     <span className={`inline-block w-2 h-2 rounded-full ${alive ? "bg-green-400" : "bg-red-400"}`} />
@@ -32,7 +35,7 @@ export default function SettingsPage() {
   const [form, setForm] = useState<Settings>({
     provider: "gemini",
     token: "",
-    model: "gemini-2.5-flash",
+    model: DEFAULT_GEMINI_MODEL,
     screenshot_interval: 2,
     idle_threshold: 120,
     focused_score_threshold: 6,
@@ -40,7 +43,9 @@ export default function SettingsPage() {
   });
   const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null);
   const [saved, setSaved] = useState(false);
+  const [tokenSaving, setTokenSaving] = useState(false);
   const settingsHydrated = useRef(false);
+  const tokenSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     if (currentSettings && !settingsHydrated.current) {
@@ -58,15 +63,38 @@ export default function SettingsPage() {
       const { allowed_categories: _a, default_prompt: _d, ...settings } = data;
       setForm(settings);
       setSaved(true);
+      setTokenSaving(false);
       setTimeout(() => setSaved(false), 2500);
     },
+    onError: () => setTokenSaving(false),
   });
 
   const testMutation = useMutation({
     mutationFn: () => testSettings(form.provider, form.token, form.model),
-    onSuccess: (result) => setTestResult(result),
+    onSuccess: (result) => {
+      setTestResult(result);
+      queryClient.invalidateQueries({ queryKey: ["settings"] });
+    },
     onError: () => setTestResult({ success: false, message: "Connection failed. Check provider and token." }),
   });
+
+  // Автосохранение API-ключа при вводе (debounce)
+  useEffect(() => {
+    if (!settingsHydrated.current || !currentSettings) return;
+    const trimmed = form.token.trim();
+    if (trimmed === currentSettings.token.trim()) return;
+
+    setTokenSaving(true);
+    if (tokenSaveTimer.current) clearTimeout(tokenSaveTimer.current);
+    tokenSaveTimer.current = setTimeout(() => {
+      saveMutation.mutate({ ...form, token: trimmed });
+    }, 800);
+
+    return () => {
+      if (tokenSaveTimer.current) clearTimeout(tokenSaveTimer.current);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- только token
+  }, [form.token, currentSettings?.token]);
 
   const tokenDirty =
     !!currentSettings && form.token.trim() !== currentSettings.token.trim();
@@ -93,6 +121,13 @@ export default function SettingsPage() {
     setForm((f) => ({ ...f, [key]: value }));
   };
 
+  const handleTest = () => {
+    setTestResult(null);
+    saveMutation.mutate(form, {
+      onSuccess: () => testMutation.mutate(),
+    });
+  };
+
   return (
     <div className="space-y-6 max-w-2xl">
       <div className="flex items-center justify-between">
@@ -110,6 +145,35 @@ export default function SettingsPage() {
         </button>
       </div>
 
+      <div className="bg-card border border-card-border rounded-xl p-5 space-y-3">
+        <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">System Status</h2>
+
+        {status ? (
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <span className="text-sm text-muted-foreground">Watcher process</span>
+              <div className="flex items-center gap-2">
+                <StatusDot alive={status.watcher_alive} />
+                <span className={`text-sm font-medium ${status.watcher_alive ? "text-green-400" : "text-red-400"}`}>
+                  {status.watcher_alive ? "Running" : "Stopped"}
+                </span>
+              </div>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-sm text-muted-foreground">Last screenshot</span>
+              <span className="text-sm font-medium text-foreground tabular-nums">
+                {new Date(status.last_screenshot).toLocaleString([], {
+                  month: "short", day: "numeric",
+                  hour: "2-digit", minute: "2-digit",
+                })}
+              </span>
+            </div>
+          </div>
+        ) : (
+          <div className="text-sm text-muted-foreground">Fetching status…</div>
+        )}
+      </div>
+
       <div className="bg-card border border-card-border rounded-xl p-5 space-y-5">
         <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">AI Provider</h2>
 
@@ -121,9 +185,8 @@ export default function SettingsPage() {
                 key={p}
                 onClick={() => {
                   update("provider", p);
-                  // Автоматически обновляем model при смене provider
                   if (p === "gemini" && form.model.includes("llava")) {
-                    update("model", "gemini-2.5-flash");
+                    update("model", DEFAULT_GEMINI_MODEL);
                   } else if (p === "ollama" && form.model.includes("gemini")) {
                     update("model", "llava:7b");
                   }
@@ -144,6 +207,20 @@ export default function SettingsPage() {
           <label className="text-sm text-muted-foreground">
             {form.provider === "gemini" ? "API Token" : "Ollama Base URL"}
           </label>
+          {form.provider === "gemini" && (
+            <p className="text-xs text-muted-foreground">
+              Создайте ключ на{" "}
+              <a
+                href={GEMINI_KEYS_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-primary hover:underline"
+              >
+                aistudio.google.com/api-keys
+              </a>
+              . Название проекта и ключа — любые. Скопируйте ключ и вставьте сюда — сохранится автоматически.
+            </p>
+          )}
           <div className="flex gap-2 mt-1">
             <input
               type={form.provider === "gemini" ? "password" : "text"}
@@ -153,16 +230,19 @@ export default function SettingsPage() {
               className="flex-1 bg-background border border-input rounded-md px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-ring font-mono placeholder:font-sans placeholder:text-muted-foreground/60"
             />
             <button
-              onClick={() => {
-                setTestResult(null);
-                testMutation.mutate();
-              }}
-              disabled={testMutation.isPending || !form.token}
+              onClick={handleTest}
+              disabled={testMutation.isPending || saveMutation.isPending || !form.token}
               className="px-4 py-2 bg-secondary text-secondary-foreground rounded-md text-sm font-medium border border-border hover:bg-accent transition-colors disabled:opacity-50"
             >
-              {testMutation.isPending ? "Testing…" : "Test"}
+              {testMutation.isPending || saveMutation.isPending ? "Testing…" : "Test"}
             </button>
           </div>
+          {tokenSaving && !saveMutation.isPending && (
+            <p className="text-xs text-muted-foreground mt-1">Сохранение ключа…</p>
+          )}
+          {tokenDirty && !tokenSaving && !saveMutation.isPending && (
+            <p className="text-xs text-amber-300/90 mt-1">Ключ изменён — сохранится через секунду</p>
+          )}
           {testResult && (
             <div
               className={`mt-2 px-3 py-2 rounded-md text-xs flex items-center gap-2 ${
@@ -316,35 +396,6 @@ export default function SettingsPage() {
             Sessions with score ≥ {form.focused_score_threshold} count toward "Focused Time".
           </p>
         </div>
-      </div>
-
-      <div className="bg-card border border-card-border rounded-xl p-5 space-y-3">
-        <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">System Status</h2>
-
-        {status ? (
-          <div className="space-y-3">
-            <div className="flex items-center justify-between">
-              <span className="text-sm text-muted-foreground">Watcher process</span>
-              <div className="flex items-center gap-2">
-                <StatusDot alive={status.watcher_alive} />
-                <span className={`text-sm font-medium ${status.watcher_alive ? "text-green-400" : "text-red-400"}`}>
-                  {status.watcher_alive ? "Running" : "Stopped"}
-                </span>
-              </div>
-            </div>
-            <div className="flex items-center justify-between">
-              <span className="text-sm text-muted-foreground">Last screenshot</span>
-              <span className="text-sm font-medium text-foreground tabular-nums">
-                {new Date(status.last_screenshot).toLocaleString([], {
-                  month: "short", day: "numeric",
-                  hour: "2-digit", minute: "2-digit",
-                })}
-              </span>
-            </div>
-          </div>
-        ) : (
-          <div className="text-sm text-muted-foreground">Fetching status…</div>
-        )}
       </div>
     </div>
   );
