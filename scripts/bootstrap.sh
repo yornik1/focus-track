@@ -36,6 +36,22 @@ clear_quarantine() {
   fi
 }
 
+# GitHub ZIP часто снимает +x — без этого bootstrap ошибочно лезет в Xcode CLT
+prepare_release_binaries() {
+  local bin="$REPO_ROOT/mac/bin/focus-capture"
+  if [[ -f "$bin" ]]; then
+    chmod +x "$bin" 2>/dev/null || true
+    xattr -dr com.apple.quarantine "$bin" 2>/dev/null || true
+  fi
+  chmod +x "$REPO_ROOT/mac/"*.sh 2>/dev/null || true
+  chmod +x "$REPO_ROOT/scripts/"*.sh 2>/dev/null || true
+}
+
+# Релизный ZIP: focus-capture уже в архиве
+is_release_install() {
+  [[ -f "$REPO_ROOT/mac/bin/focus-capture" ]]
+}
+
 ensure_network() {
   if $DRY_RUN; then
     return 0
@@ -92,8 +108,8 @@ ensure_xcode_clt() {
     return 0
   fi
   echo ""
-  echo "  Нужны Xcode Command Line Tools — только для сборки focus-capture из исходников."
-  echo "  В релизном ZIP бинарник уже есть; если его нет — macOS покажет окно Install."
+  echo "  Нужны Xcode Command Line Tools — только если в папке нет mac/bin/focus-capture."
+  echo "  Скачайте релизный ZIP (v0.0.9+) или: chmod +x mac/bin/focus-capture"
   echo ""
   xcode-select --install 2>/dev/null || true
   die "Дождитесь установки Command Line Tools и запустите make focus-great-again ещё раз."
@@ -102,7 +118,9 @@ ensure_xcode_clt() {
 # Бинарник из релиза подходит для текущей архитектуры?
 capture_binary_usable() {
   local bin="$REPO_ROOT/mac/bin/focus-capture"
-  [[ -f "$bin" && -x "$bin" ]] || return 1
+  [[ -f "$bin" ]] || return 1
+  chmod +x "$bin" 2>/dev/null || true
+  [[ -x "$bin" ]] || return 1
   local host
   host="$(uname -m)"
   local info
@@ -241,6 +259,15 @@ ensure_toolchain() {
     return 0
   fi
 
+  # Релиз: не ставим Homebrew с нуля (его установщик тянет Command Line Tools)
+  if is_release_install; then
+    log "Node/pnpm → ~/ (релизный ZIP, без установки Homebrew)"
+    ensure_toolchain_user_local
+    ok "Node $(node -v)"
+    ok "pnpm $(pnpm -v)"
+    return 0
+  fi
+
   if ! brew_usable; then
     log "Node/pnpm → ~/ (Homebrew недоступен этому пользователю)"
   elif ! ensure_toolchain_brew || ! verify_node_pnpm; then
@@ -333,24 +360,28 @@ install_launchagents() {
 }
 
 print_gemini_hint() {
-  echo "  Ключ Gemini: https://aistudio.google.com/api-keys"
+  local keys_url="https://aistudio.google.com/api-keys"
+  echo "  Ключ Gemini: $keys_url"
   echo "  Название проекта и ключа — любые. Скопируйте ключ → вставьте в Settings."
 }
 
 print_done() {
   local url="http://localhost:${FOCUS_PORT:-5001}/#settings"
+  local keys_url="https://aistudio.google.com/api-keys"
   echo ""
   echo "============================================"
   echo "  Готово"
   echo "============================================"
   echo ""
   echo "  Настройка Gemini (откроется в браузере):"
+  echo "  $keys_url"
   echo "  $url"
   echo ""
   print_gemini_hint
   echo ""
   if ! $DRY_RUN; then
     sleep 2
+    open "$keys_url" 2>/dev/null || true
     open "$url" 2>/dev/null || true
   fi
   echo "  Проверка: make diagnose"
@@ -365,8 +396,18 @@ main() {
 
   ensure_macos
   clear_quarantine
+  prepare_release_binaries
   ensure_network
-  ensure_homebrew
+  if is_release_install; then
+    setup_brew_path
+    if brew_usable; then
+      ok "Homebrew (уже был)"
+    else
+      warn "Homebrew не ставим — в релизе уже есть focus-capture, Node/pnpm пойдут в ~/"
+    fi
+  else
+    ensure_homebrew
+  fi
   ensure_toolchain
   install_deps
   push_db
