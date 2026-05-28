@@ -53,7 +53,16 @@ stamp=$(/bin/date +%Y%m%d-%H%M%S)
 final="${CAPTURES_DIR}/${stamp}.jpg"
 
 # Swift-утилита: ScreenCaptureKit + resize 1280 + quality 0.4 за один проход
-"${FOCUS_TRACK_ROOT}/mac/bin/focus-capture" "${final}" 1280 0.4 2>> "${LOG_FILE}"
+capture_err="$(mktemp)"
+if ! "${FOCUS_TRACK_ROOT}/mac/bin/focus-capture" "${final}" 1280 0.4 2>"${capture_err}"; then
+  /bin/cat "${capture_err}" >> "${LOG_FILE}"
+  if /usr/bin/grep -q "declined TCC" "${capture_err}"; then
+    echo "$(date): Нет доступа к записи экрана для ${FOCUS_TRACK_ROOT}/mac/bin/focus-capture. Удалите ВСЕ старые focus-capture в Настройках → Запись экрана, затем: make fix-screen-recording" >> "${LOG_FILE}"
+  fi
+else
+  /bin/cat "${capture_err}" >> "${LOG_FILE}"
+fi
+rm -f "${capture_err}"
 if [[ ! -s "${final}" ]]; then
   echo "$(date): Скриншот пустой, пропускаю" >> "${LOG_FILE}"
   rm -f "${final}"

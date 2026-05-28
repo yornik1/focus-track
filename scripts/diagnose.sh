@@ -13,15 +13,25 @@ echo "============================================"
 echo ""
 
 echo "=== 1. Скринер ==="
-if [[ -x "$CAPTURE_BIN" ]]; then
+prepare_capture_binary 2>/dev/null || true
+if [[ -f "$CAPTURE_BIN" ]]; then
   echo "✅ focus-capture есть"
+  echo "   $CAPTURE_BIN"
   TEST="/tmp/focus-diag-test.jpg"
-  if "$CAPTURE_BIN" "$TEST" 768 0.4 2>/dev/null && [[ -s "$TEST" ]]; then
+  err_file="/tmp/focus-diag-capture.err"
+  if "$CAPTURE_BIN" "$TEST" 768 0.4 2>"$err_file" && [[ -s "$TEST" ]]; then
     echo "✅ Скриншот работает ($(ls -lh "$TEST" | awk '{print $5}'))"
-    rm -f "$TEST"
+    rm -f "$TEST" "$err_file"
   else
-    echo "❌ Скриншот пустой — проверьте Screen Recording для mac/bin/focus-capture"
-    rm -f "$TEST"
+    echo "❌ Скриншот не сделался"
+    if [[ -s "$err_file" ]] && grep -q "declined TCC" "$err_file"; then
+      echo "   macOS не даёт запись экрана этому файлу (часто из‑за старых копий в списке)."
+      echo "   Удалите ВСЕ строки «focus-capture» в настройках (−), затем: make fix-screen-recording"
+    else
+      echo "   Проверьте Screen Recording для: $CAPTURE_BIN"
+      [[ -s "$err_file" ]] && echo "   $(tail -1 "$err_file")"
+    fi
+    rm -f "$TEST" "$err_file"
   fi
 else
   echo "❌ focus-capture не найден — запустите: make focus-great-again"

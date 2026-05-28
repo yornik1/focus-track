@@ -30,6 +30,10 @@ build_arch x86_64 "$TMP/focus-capture-x86_64"
 echo "→ lipo universal..."
 lipo -create -output "$OUT" "$TMP/focus-capture-arm64" "$TMP/focus-capture-x86_64"
 chmod +x "$OUT"
+# shellcheck source=lib/sign-capture.sh
+source "$(dirname "$0")/lib/sign-capture.sh"
+sign_capture_binary "$OUT"
 
 echo "✓ $OUT"
+codesign -dv "$OUT" 2>/dev/null | grep -E 'Signature|Identifier' || true
 lipo -info "$OUT"

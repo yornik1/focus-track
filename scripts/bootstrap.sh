@@ -38,11 +38,9 @@ clear_quarantine() {
 
 # GitHub ZIP часто снимает +x — без этого bootstrap ошибочно лезет в Xcode CLT
 prepare_release_binaries() {
-  local bin="$REPO_ROOT/mac/bin/focus-capture"
-  if [[ -f "$bin" ]]; then
-    chmod +x "$bin" 2>/dev/null || true
-    xattr -dr com.apple.quarantine "$bin" 2>/dev/null || true
-  fi
+  # shellcheck source=lib/common.sh
+  source "$(dirname "$0")/lib/common.sh"
+  prepare_capture_binary 2>/dev/null || true
   chmod +x "$REPO_ROOT/mac/"*.sh 2>/dev/null || true
   chmod +x "$REPO_ROOT/scripts/"*.sh 2>/dev/null || true
 }
@@ -319,6 +317,8 @@ compile_capture() {
   swiftc -O -o "$REPO_ROOT/mac/bin/focus-capture" \
     "$REPO_ROOT/mac/bin/focus-capture.swift" \
     -framework Cocoa -framework ScreenCaptureKit
+  source "$(dirname "$0")/lib/common.sh"
+  prepare_capture_binary
   ok "mac/bin/focus-capture (собран)"
 }
 
@@ -336,11 +336,18 @@ ensure_env() {
 request_screen_recording() {
   log "Разрешение Screen Recording..."
   local test="/tmp/focus-perm-test.jpg"
+  local bin="$REPO_ROOT/mac/bin/focus-capture"
   if $DRY_RUN; then
     echo "  [dry-run] focus-capture + System Settings"
     return 0
   fi
-  "$REPO_ROOT/mac/bin/focus-capture" "$test" 640 0.4 2>/dev/null || true
+  source "$(dirname "$0")/lib/common.sh"
+  prepare_capture_binary
+  echo ""
+  echo "  Если всплывёт запрос — Разрешить (для этого файла):"
+  echo "  $bin"
+  echo ""
+  "$bin" "$test" 640 0.4 2>/dev/null || true
   if [[ -s "$test" ]]; then
     ok "Screen Recording OK"
     rm -f "$test"
@@ -349,8 +356,9 @@ request_screen_recording() {
   rm -f "$test"
   open "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture" 2>/dev/null || true
   echo ""
-  warn "Добавьте в список файл (кнопка +):"
-  echo "  $REPO_ROOT/mac/bin/focus-capture"
+  warn "Запись экрана: удалите ВСЕ старые «focus-capture» в списке (−), затем:"
+  echo "  make fix-screen-recording"
+  echo "  или + → $bin"
   echo ""
 }
 

@@ -23,3 +23,13 @@ read_dashboard_port() {
   source "$(dirname "${BASH_SOURCE[0]}")/port.sh"
   read_env_port "$REPO_ROOT" 5001
 }
+
+prepare_capture_binary() {
+  local bin="${CAPTURE_BIN}"
+  [[ -f "$bin" ]] || return 1
+  chmod +x "$bin" 2>/dev/null || true
+  xattr -dr com.apple.quarantine "$bin" 2>/dev/null || true
+  # shellcheck source=sign-capture.sh
+  source "$(dirname "${BASH_SOURCE[0]}")/sign-capture.sh"
+  sign_capture_binary "$bin"
+}

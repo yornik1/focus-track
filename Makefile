@@ -12,6 +12,9 @@ focus-great-again: ## Полная установка (brew/node/pnpm → db →
 build-capture: ## Собрать universal focus-capture (нужен swiftc, для релиза)
 	bash ./scripts/build-focus-capture.sh
 
+fix-screen-recording: ## Починить TCC: подпись + тест + подсказки (если вечные запросы)
+	bash ./scripts/fix-screen-recording.sh
+
 dev: ## Запуск дашборда локально
 	pnpm -w run dev
 
