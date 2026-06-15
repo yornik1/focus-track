@@ -14,23 +14,31 @@ echo ""
 
 echo "=== 1. Скринер ==="
 prepare_capture_binary 2>/dev/null || true
-if [[ -f "$CAPTURE_BIN" ]]; then
-  echo "✅ focus-capture есть"
+# shellcheck source=lib/capture-app.sh
+source "$(dirname "$0")/lib/capture-app.sh"
+CAPTURE_BIN="$(resolve_capture_executable "$REPO_ROOT")"
+if [[ -n "$CAPTURE_BIN" && -f "$CAPTURE_BIN" ]]; then
+  echo "✅ Утилита захвата есть"
   echo "   $CAPTURE_BIN"
+  [[ "$CAPTURE_BIN" == *Focus\ Capture.app* ]] && echo "   (режим .app — в настройках ищите «Focus Capture»)"
   TEST="/tmp/focus-diag-test.jpg"
   err_file="/tmp/focus-diag-capture.err"
+  rm -f "$TEST" "$err_file"
   if "$CAPTURE_BIN" "$TEST" 768 0.4 2>"$err_file" && [[ -s "$TEST" ]]; then
     echo "✅ Скриншот работает ($(ls -lh "$TEST" | awk '{print $5}'))"
     rm -f "$TEST" "$err_file"
   else
-    echo "❌ Скриншот не сделался"
-    if [[ -s "$err_file" ]] && grep -q "declined TCC" "$err_file"; then
-      echo "   macOS не даёт запись экрана этому файлу (часто из‑за старых копий в списке)."
-      echo "   Удалите ВСЕ строки «focus-capture» в настройках (−), затем: make fix-screen-recording"
+    echo "❌ Скриншот пустой (diagnose видит пустой файл — это не Gemini)"
+    if [[ -s "$err_file" ]]; then
+      grep -q "declined TCC" "$err_file" && echo "   Причина: macOS отклонил запись экрана (TCC)."
+      echo "   stderr: $(tail -1 "$err_file")"
     else
-      echo "   Проверьте Screen Recording для: $CAPTURE_BIN"
-      [[ -s "$err_file" ]] && echo "   $(tail -1 "$err_file")"
+      echo "   stderr пуст — часто нет разрешения или экран заблокирован."
     fi
+    echo ""
+    echo "   Галочка в списке БЕЗ всплывающего «Разрешить» часто не работает."
+    echo "   make fix-screen-recording  → удалить старые focus-capture (−) → снова тест → Разрешить"
+    open_screen_recording_settings
     rm -f "$TEST" "$err_file"
   fi
 else

@@ -1,40 +1,47 @@
 #!/usr/bin/env bash
-# Сброс путаницы TCC: подпись бинарника, тест, открыть настройки.
+# Запись экрана: одна .app «Focus Capture», тест, настройки.
 set -euo pipefail
 
 source "$(dirname "$0")/lib/common.sh"
-# shellcheck source=lib/sign-capture.sh
-source "$(dirname "$0")/lib/sign-capture.sh"
+prepare_capture_binary
+
+CAPTURE_BIN="$(resolve_capture_executable "$REPO_ROOT")"
+[[ -n "$CAPTURE_BIN" ]] || { echo "✗ Нет mac/bin/focus-capture"; exit 1; }
 
 echo "Focus Tracker — запись экрана"
 echo "=============================="
 echo ""
-echo "Путь к утилите (именно его спрашивает macOS):"
+echo "macOS не добавляет доступ «сам» по галочке для сырого файла."
+echo "Нужно один раз нажать «Разрешить» во всплывающем окне."
+echo ""
+echo "В настройках ищите: Focus Capture (не старые focus-capture)."
+echo "Путь:"
 echo "  $CAPTURE_BIN"
 echo ""
 
-chmod +x "$CAPTURE_BIN" 2>/dev/null || true
-sign_capture_binary "$CAPTURE_BIN"
-
 TEST="/tmp/focus-screen-recording-test.jpg"
-rm -f "$TEST"
+ERR="/tmp/focus-capture-test.err"
+rm -f "$TEST" "$ERR"
 
-echo "→ Пробный скриншот (может всплыть ОДИН запрос — нажмите Разрешить)..."
-if "$CAPTURE_BIN" "$TEST" 640 0.4 2>/tmp/focus-capture-test.err && [[ -s "$TEST" ]]; then
-  echo "✅ Запись экрана работает ($(ls -lh "$TEST" | awk '{print $5}'))"
-  rm -f "$TEST" /tmp/focus-capture-test.err
+echo "→ Пробный скриншот (должно всплыть окно — Разрешить)..."
+if "$CAPTURE_BIN" "$TEST" 640 0.4 2>"$ERR" && [[ -s "$TEST" ]]; then
+  echo "✅ Работает ($(ls -lh "$TEST" | awk '{print $5}'))"
+  rm -f "$TEST" "$ERR"
+  echo ""
+  echo "Перезапуск фона:"
+  echo "  launchctl unload ~/Library/LaunchAgents/com.focus-track.screenshot.plist"
+  echo "  launchctl load ~/Library/LaunchAgents/com.focus-track.screenshot.plist"
   exit 0
 fi
 
-echo "❌ Скриншот не вышел"
-[[ -f /tmp/focus-capture-test.err ]] && tail -3 /tmp/focus-capture-test.err
+echo "❌ Скриншот пустой или ошибка"
+[[ -f "$ERR" ]] && cat "$ERR"
 echo ""
-echo "В Системных настройках → Конфиденциальность → Запись экрана:"
-echo "  1. Удалите ВСЕ строки «focus-capture» (кнопка −) — это старые копии с других путей."
-echo "  2. Не включайте галочки вручную — снова запустите: make fix-screen-recording"
-echo "  3. Или +: выберите файл выше → включите только его."
+echo "Сделайте так:"
+echo "  1. Настройки → Конфиденциальность → Запись экрана"
+echo "  2. Удалите (−) ВСЕ строки focus-capture / Focus Capture"
+echo "  3. Снова: make fix-screen-recording"
+echo "  4. На всплывающем запросе — Разрешить (не только галочка в списке)"
 echo ""
-
-open "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture" 2>/dev/null || true
-
+open_screen_recording_settings
 exit 1

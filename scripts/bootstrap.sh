@@ -43,6 +43,7 @@ prepare_release_binaries() {
   prepare_capture_binary 2>/dev/null || true
   chmod +x "$REPO_ROOT/mac/"*.sh 2>/dev/null || true
   chmod +x "$REPO_ROOT/scripts/"*.sh 2>/dev/null || true
+  chmod +x "$REPO_ROOT/scripts/lib/"*.sh 2>/dev/null || true
 }
 
 # Релизный ZIP: focus-capture уже в архиве
@@ -115,8 +116,11 @@ ensure_xcode_clt() {
 
 # Бинарник из релиза подходит для текущей архитектуры?
 capture_binary_usable() {
-  local bin="$REPO_ROOT/mac/bin/focus-capture"
-  [[ -f "$bin" ]] || return 1
+  # shellcheck source=lib/capture-app.sh
+  source "$(dirname "$0")/lib/capture-app.sh"
+  local bin
+  bin="$(resolve_capture_executable "$REPO_ROOT")"
+  [[ -n "$bin" && -f "$bin" ]] || return 1
   chmod +x "$bin" 2>/dev/null || true
   [[ -x "$bin" ]] || return 1
   local host
@@ -336,15 +340,19 @@ ensure_env() {
 request_screen_recording() {
   log "Разрешение Screen Recording..."
   local test="/tmp/focus-perm-test.jpg"
-  local bin="$REPO_ROOT/mac/bin/focus-capture"
   if $DRY_RUN; then
-    echo "  [dry-run] focus-capture + System Settings"
+    echo "  [dry-run] Focus Capture.app + System Settings"
     return 0
   fi
   source "$(dirname "$0")/lib/common.sh"
+  # shellcheck source=lib/capture-app.sh
+  source "$(dirname "$0")/lib/capture-app.sh"
   prepare_capture_binary
+  local bin
+  bin="$(resolve_capture_executable "$REPO_ROOT")"
   echo ""
-  echo "  Если всплывёт запрос — Разрешить (для этого файла):"
+  echo "  Сейчас может всплыть запрос macOS — нажмите «Разрешить»."
+  echo "  В настройках потом будет: Focus Capture (не только галочка вручную)."
   echo "  $bin"
   echo ""
   "$bin" "$test" 640 0.4 2>/dev/null || true
@@ -354,11 +362,9 @@ request_screen_recording() {
     return 0
   fi
   rm -f "$test"
-  open "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture" 2>/dev/null || true
+  open_screen_recording_settings
   echo ""
-  warn "Запись экрана: удалите ВСЕ старые «focus-capture» в списке (−), затем:"
-  echo "  make fix-screen-recording"
-  echo "  или + → $bin"
+  warn "Запись экрана: make fix-screen-recording"
   echo ""
 }
 

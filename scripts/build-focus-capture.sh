@@ -33,7 +33,11 @@ chmod +x "$OUT"
 # shellcheck source=lib/sign-capture.sh
 source "$(dirname "$0")/lib/sign-capture.sh"
 sign_capture_binary "$OUT"
+# shellcheck source=lib/capture-app.sh
+source "$(dirname "$0")/lib/capture-app.sh"
+ensure_capture_app_bundle "$REPO_ROOT"
 
 echo "✓ $OUT"
+echo "✓ $(capture_app_dir "$REPO_ROOT")"
 codesign -dv "$OUT" 2>/dev/null | grep -E 'Signature|Identifier' || true
 lipo -info "$OUT"

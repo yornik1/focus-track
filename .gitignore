@@ -187,3 +187,8 @@ Thumbs.db
 focus-app-settings.json
 data/
 # focus-capture — в репо (universal); пересборка: make build-capture
+# Focus Capture.app генерируется из mac/bin/focus-capture (ensure_capture_app_bundle)
+mac/Focus Capture.app/
+
+# OMC runtime state — не коммитить
+.omc/

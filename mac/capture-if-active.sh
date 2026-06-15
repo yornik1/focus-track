@@ -10,6 +10,10 @@ focus_export_toolchain_path
 : "${FOCUS_TRACK_IDLE_SEC:=300}"
 : "${FOCUS_TRACK_ROOT:=$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")/.." && pwd)}"
 
+# shellcheck source=../scripts/lib/capture-app.sh
+source "${FOCUS_TRACK_ROOT}/scripts/lib/capture-app.sh"
+CAPTURE_EXE="$(resolve_capture_executable "${FOCUS_TRACK_ROOT}")"
+
 DATA_DIR="${FOCUS_TRACK_ROOT}/data"
 CAPTURES_DIR="${DATA_DIR}/captures"
 LOG_FILE="${DATA_DIR}/logs/capture.log"
@@ -54,10 +58,14 @@ final="${CAPTURES_DIR}/${stamp}.jpg"
 
 # Swift-утилита: ScreenCaptureKit + resize 1280 + quality 0.4 за один проход
 capture_err="$(mktemp)"
-if ! "${FOCUS_TRACK_ROOT}/mac/bin/focus-capture" "${final}" 1280 0.4 2>"${capture_err}"; then
+if [[ -z "${CAPTURE_EXE}" || ! -f "${CAPTURE_EXE}" ]]; then
+  echo "$(date): Нет focus-capture — make focus-great-again или make fix-screen-recording" >> "${LOG_FILE}"
+  exit 0
+fi
+if ! "${CAPTURE_EXE}" "${final}" 1280 0.4 2>"${capture_err}"; then
   /bin/cat "${capture_err}" >> "${LOG_FILE}"
   if /usr/bin/grep -q "declined TCC" "${capture_err}"; then
-    echo "$(date): Нет доступа к записи экрана для ${FOCUS_TRACK_ROOT}/mac/bin/focus-capture. Удалите ВСЕ старые focus-capture в Настройках → Запись экрана, затем: make fix-screen-recording" >> "${LOG_FILE}"
+    echo "$(date): Нет записи экрана для ${CAPTURE_EXE}. Настройки → Запись экрана: удалите (−) старые focus-capture, make fix-screen-recording, на всплывающем окне — Разрешить (одной галочки в списке часто мало)." >> "${LOG_FILE}"
   fi
 else
   /bin/cat "${capture_err}" >> "${LOG_FILE}"
