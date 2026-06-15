@@ -12,6 +12,10 @@ export interface TodayStats {
   total_focused_minutes: number;
   avg_score: number;
   total_screenshots: number;
+  longest_session_min: number;
+  deep_work_minutes: number;
+  distraction_minutes: number;
+  focus_sessions: number;
 }
 
 export interface CalendarDay {
@@ -174,6 +178,10 @@ const MOCK_TODAY: TodayStats = {
   total_focused_minutes: 248,
   avg_score: 7.1,
   total_screenshots: 62,
+  longest_session_min: 64,
+  deep_work_minutes: 248,
+  distraction_minutes: 26,
+  focus_sessions: 3,
 };
 
 const MOCK_SETTINGS: SettingsResponse = {
@@ -246,26 +254,43 @@ async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
 export interface StreakData {
   streak: number;
   best_streak: number;
+  floor_minutes: number;
+  target_minutes: number;
+  today_best_session_min: number;
+  today_deep_work_minutes: number;
+  today_floor_met: boolean;
+  today_target_met: boolean;
+  personal_best_min: number;
   last7days: Array<{
     date: string;
-    avg_score: number | null;
     is_weekend: boolean;
-    productive_minutes: number;
-    productive_by_category: Record<string, number>;
+    best_session_min: number;
+    deep_work_minutes: number;
+    floor_met: boolean;
+    target_met: boolean;
+    avg_score: number | null;
+    by_category: Record<string, number>;
   }>;
 }
 
 const MOCK_STREAK: StreakData = {
-  streak: 6,
-  best_streak: 12,
+  streak: 4,
+  best_streak: 9,
+  floor_minutes: 15,
+  target_minutes: 45,
+  today_best_session_min: 38,
+  today_deep_work_minutes: 96,
+  today_floor_met: true,
+  today_target_met: false,
+  personal_best_min: 72,
   last7days: [
-    { date: "2025-04-28", avg_score: 7.3, is_weekend: false, productive_minutes: 198, productive_by_category: { code: 120, research: 78 } },
-    { date: "2025-04-29", avg_score: 8.0, is_weekend: false, productive_minutes: 156, productive_by_category: { code: 156 } },
-    { date: "2025-04-30", avg_score: 5.2, is_weekend: false, productive_minutes: 90, productive_by_category: { code: 60, research: 30 } },
-    { date: "2025-05-01", avg_score: 7.1, is_weekend: false, productive_minutes: 210, productive_by_category: { code: 150, research: 60 } },
-    { date: "2025-05-02", avg_score: 6.5, is_weekend: false, productive_minutes: 175, productive_by_category: { code: 100, communication: 75 } },
-    { date: "2025-05-05", avg_score: 7.2, is_weekend: false, productive_minutes: 188, productive_by_category: { code: 128, research: 60 } },
-    { date: "2025-05-06", avg_score: 7.8, is_weekend: false, productive_minutes: 248, productive_by_category: { code: 180, research: 68 } },
+    { date: "2025-04-30", is_weekend: false, best_session_min: 28, deep_work_minutes: 90, floor_met: true, target_met: false, avg_score: 5.2, by_category: { code: 60, research: 30 } },
+    { date: "2025-05-01", is_weekend: false, best_session_min: 52, deep_work_minutes: 210, floor_met: true, target_met: true, avg_score: 7.1, by_category: { code: 150, research: 60 } },
+    { date: "2025-05-02", is_weekend: false, best_session_min: 40, deep_work_minutes: 175, floor_met: true, target_met: false, avg_score: 6.5, by_category: { code: 100, writing: 75 } },
+    { date: "2025-05-03", is_weekend: true, best_session_min: 0, deep_work_minutes: 0, floor_met: false, target_met: false, avg_score: null, by_category: {} },
+    { date: "2025-05-04", is_weekend: true, best_session_min: 18, deep_work_minutes: 36, floor_met: true, target_met: false, avg_score: 6.0, by_category: { code: 36 } },
+    { date: "2025-05-05", is_weekend: false, best_session_min: 46, deep_work_minutes: 188, floor_met: true, target_met: true, avg_score: 7.2, by_category: { code: 128, research: 60 } },
+    { date: "2025-05-06", is_weekend: false, best_session_min: 38, deep_work_minutes: 96, floor_met: true, target_met: false, avg_score: 7.8, by_category: { code: 70, design: 26 } },
   ],
 };
 

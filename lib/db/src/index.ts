@@ -3,3 +3,14 @@ export * from "./schema";
 export * from "./app-settings";
 export * from "./category-queries";
 export { ALLOWED_CATEGORIES, PRODUCTIVE_CATEGORIES, PRODUCTIVE_DAY_MINUTES, isProductiveCategory, normalizeCategory, buildAnalysisPrompt } from "@workspace/categories";
+export {
+  DEEP_WORK_CATEGORIES,
+  isDeepWorkCategory,
+  FOCUS_FLOOR_MINUTES,
+  FOCUS_TARGET_CAP_MINUTES,
+  computeFocusSessions,
+  summarizeDailyFocus,
+  nextFocusTarget,
+  medianActiveBest,
+} from "@workspace/categories";
+export type { FocusPoint, FocusSession, FocusSessionOptions, DailyFocusSummary } from "@workspace/categories";

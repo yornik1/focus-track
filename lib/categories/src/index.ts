@@ -1,3 +1,5 @@
+export * from "./focus";
+
 /** Категории с цветами в календаре — единый whitelist для LLM и UI. */
 export const ALLOWED_CATEGORIES = [
   "code",

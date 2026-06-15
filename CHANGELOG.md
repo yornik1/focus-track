@@ -1,3 +1,27 @@
+# Changelog — 2026-06-15
+
+## Аналитика фокуса и стрик переделаны на Deep Work
+
+### Метрика Deep Work и непрерывные сессии
+- Чистые хелперы в `@workspace/categories` (`lib/categories/src/focus.ts`): `computeFocusSessions`, `summarizeDailyFocus`, `nextFocusTarget`, `medianActiveBest` (+ юнит-тесты).
+- Deep Work = категории `code/research/design/writing` со `score ≥ focused_score_threshold`; communication из зачёта убран.
+- Непрерывная сессия = подряд идущие качественные скрины с зазором ≤ `max(6, interval×2.5)` мин (idle/смена активности рвут блок).
+
+### `GET /api/stats/streak` — новый смысл
+- Soft-стрик: держится при одном непрерывном блоке ≥ 15 мин (floor); считаются все 7 дней (раньше — только будни).
+- Адаптивная дневная цель `target_minutes` от медианы типичного блока за 14 дней (+ступень 5 мин), пол 15, потолок 180 — мягкий рост без погони за пиком.
+- Ответ: `floor_minutes`, `target_minutes`, `today_best_session_min`, `today_floor_met`, `today_target_met`, `personal_best_min`, `last7days[].{best_session_min, deep_work_minutes, floor_met, target_met, by_category}`.
+
+### `GET /api/stats/today`
+- Добавлены `longest_session_min`, `deep_work_minutes`, `distraction_minutes`, `focus_sessions`.
+- Починен баг порога: `total_focused_minutes` считается по `focused_score_threshold` (было хардкод `≥7` при подписи `≥6`).
+
+### Прочее
+- Границы суток в стрике — по локальному времени из `timestamp` (раньше UTC из `datetime`).
+- `Today.tsx`: кольцо прогресса (лучшая сессия vs цель), 🔥-стрик со статусом, недельная полоса с линией цели; карточка «Focused Time» → «Deep Work»; поля устойчивы к отсутствию.
+
+---
+
 # Changelog — 2026-05-06
 
 ## Реализовано

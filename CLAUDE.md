@@ -115,9 +115,9 @@ interface LLMProvider {
 
 | Endpoint | Статус | Описание |
 |----------|--------|----------|
-| `GET /api/stats/today` | DONE | Статистика дня + hourly heatmap |
+| `GET /api/stats/today` | DONE | Статистика дня: score, deep_work_minutes, longest_session_min, focus_sessions, distraction_minutes, hourly heatmap |
 | `GET /api/stats/calendar?month=YYYY-MM` | DONE | Avg score по дням месяца |
-| `GET /api/stats/streak` | DONE | Текущий streak, лучший streak, last7days (только рабочие дни) |
+| `GET /api/stats/streak` | DONE | Deep Work стрик (floor 15 мин/день, все дни), адаптивная цель `target_minutes`, `best_streak`, `personal_best_min`, last7days с `best_session_min`/`floor_met`/`target_met` |
 | `GET /api/logs` | DONE | Фильтрация: date, date_from, date_to, category, min/max_score |
 | `PATCH /api/logs/:id` | DONE | Обновить category/score/summary |
 | `DELETE /api/logs/:id` | DONE | Удалить запись |

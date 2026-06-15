@@ -9,7 +9,11 @@ import {
   DEFAULT_PROMPT,
   ALLOWED_CATEGORIES,
   isProductiveCategory,
-  PRODUCTIVE_DAY_MINUTES,
+  summarizeDailyFocus,
+  computeFocusSessions,
+  nextFocusTarget,
+  medianActiveBest,
+  FOCUS_FLOOR_MINUTES,
 } from "@workspace/db";
 import { eq, gte, lte, and, sql, desc } from "drizzle-orm";
 import { testLlmConnection } from "../llm-connection-test";
@@ -29,6 +33,9 @@ function localDateStr(date: Date): string {
 // GET /api/stats/today
 router.get("/stats/today", async (req, res) => {
   const now = new Date();
+  const settings = readAppSettings() ?? getDefaultAppSettings();
+  const interval = settings.screenshot_interval ?? 2;
+  const threshold = settings.focused_score_threshold;
   const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime() / 1000;
   const todayEnd = todayStart + 86400;
 
@@ -53,6 +60,10 @@ router.get("/stats/today", async (req, res) => {
       total_focused_minutes: 0,
       avg_score: 0,
       total_screenshots: 0,
+      longest_session_min: 0,
+      deep_work_minutes: 0,
+      distraction_minutes: 0,
+      focus_sessions: 0,
     });
   }
 
@@ -85,7 +96,18 @@ router.get("/stats/today", async (req, res) => {
 
   const totalScore = logs.reduce((sum, log) => sum + log.focus_score, 0);
   const avgScore = totalScore / logs.length;
-  const focusedMinutes = logs.filter((log) => log.focus_score >= 7).length * 2; // примерно 2 мин на скрин
+
+  // Аналитика focus-сессий за сегодня
+  const points = logs.map((log) => ({
+    timestamp: log.timestamp,
+    category: log.category,
+    focus_score: log.focus_score,
+  }));
+  const { best_session_min, deep_work_minutes } = summarizeDailyFocus(points, { interval, threshold });
+  const sessions = computeFocusSessions(points, { interval, threshold });
+  const focus_sessions = sessions.filter((s) => s.minutes >= FOCUS_FLOOR_MINUTES).length;
+  const focusedMinutes = logs.filter((log) => log.focus_score >= threshold).length * interval;
+  const distraction_minutes = logs.filter((log) => !isProductiveCategory(log.category)).length * interval;
 
   return res.json({
     focus_score: latest.focus_score,
@@ -96,6 +118,10 @@ router.get("/stats/today", async (req, res) => {
     total_focused_minutes: focusedMinutes,
     avg_score: Math.round(avgScore * 10) / 10,
     total_screenshots: logs.length,
+    longest_session_min: best_session_min,
+    deep_work_minutes,
+    distraction_minutes,
+    focus_sessions,
   });
 });
 
@@ -203,7 +229,9 @@ router.patch("/logs/:id", async (req, res) => {
 // GET /api/stats/streak
 router.get("/stats/streak", async (req, res) => {
   const settings = readAppSettings() ?? getDefaultAppSettings();
-  const intervalMin = settings.screenshot_interval ?? 2;
+  const interval = settings.screenshot_interval ?? 2;
+  const threshold = settings.focused_score_threshold;
+  const opts = { interval, threshold };
 
   // Все записи за последние 90 дней
   const since = new Date();
@@ -213,113 +241,118 @@ router.get("/stats/streak", async (req, res) => {
     .from(focusLogTable)
     .where(gte(focusLogTable.timestamp, Math.floor(since.getTime() / 1000)));
 
-  // Скриншоты по дате и категории (только продуктивные)
-  const productiveByDate = new Map<string, Map<string, number>>();
+  // Группировка точек по ЛОКАЛЬНОЙ дате из timestamp (чинит TZ-баг datetime UTC)
+  const pointsByDate = new Map<string, { timestamp: number; category: string; focus_score: number }[]>();
   const scoresByDate = new Map<string, number[]>();
   for (const row of rows) {
-    const date = row.datetime.slice(0, 10);
+    const date = localDateStr(new Date(row.timestamp * 1000));
+    if (!pointsByDate.has(date)) pointsByDate.set(date, []);
+    pointsByDate.get(date)!.push({ timestamp: row.timestamp, category: row.category, focus_score: row.focus_score });
     if (!scoresByDate.has(date)) scoresByDate.set(date, []);
     scoresByDate.get(date)!.push(row.focus_score);
-
-    if (!isProductiveCategory(row.category)) continue;
-    if (!productiveByDate.has(date)) productiveByDate.set(date, new Map());
-    const catMap = productiveByDate.get(date)!;
-    catMap.set(row.category, (catMap.get(row.category) ?? 0) + 1);
   }
 
-  function productiveStats(dateStr: string): { minutes: number; by_category: Record<string, number> } {
-    const catMap = productiveByDate.get(dateStr);
-    if (!catMap) return { minutes: 0, by_category: {} };
-    const by_category: Record<string, number> = {};
-    let minutes = 0;
-    for (const [cat, count] of catMap) {
-      const mins = count * intervalMin;
-      by_category[cat] = mins;
-      minutes += mins;
+  // Кэш дневных сводок (best_session_min / deep_work_minutes / by_category)
+  const summaryCache = new Map<string, ReturnType<typeof summarizeDailyFocus>>();
+  function daySummary(dateStr: string) {
+    let s = summaryCache.get(dateStr);
+    if (!s) {
+      s = summarizeDailyFocus(pointsByDate.get(dateStr) ?? [], opts);
+      summaryCache.set(dateStr, s);
     }
-    return { minutes, by_category };
+    return s;
   }
+  const floorMet = (dateStr: string) => daySummary(dateStr).best_session_min >= FOCUS_FLOOR_MINUTES;
 
-  // Продуктивный день = ≥ PRODUCTIVE_DAY_MINUTES в полезных категориях
-  const productiveDates = new Set<string>();
-  for (const [date, catMap] of productiveByDate) {
-    let total = 0;
-    for (const count of catMap.values()) total += count * intervalMin;
-    if (total >= PRODUCTIVE_DAY_MINUTES) productiveDates.add(date);
-  }
-
-  // Текущий streak (только рабочие дни)
-  let streak = 0;
   const today = new Date();
+  const todayStr = localDateStr(today);
+
+  // Адаптивная цель: от ТИПИЧНОГО блока (медиана активных дней) за прошлые 14 дней
+  const prevBest: number[] = [];
+  for (let i = 1; i <= 14; i++) {
+    const d = new Date(today);
+    d.setDate(d.getDate() - i);
+    prevBest.push(daySummary(localDateStr(d)).best_session_min);
+  }
+  const target_minutes = nextFocusTarget(medianActiveBest(prevBest));
+
+  // Текущий soft-стрик: подряд дни с floor_met; сегодня in-progress не ломает
+  let streak = 0;
   for (let i = 0; i < 90; i++) {
     const d = new Date(today);
     d.setDate(d.getDate() - i);
-    const dow = d.getDay();
-    if (dow === 0 || dow === 6) continue;
-    const dateStr = localDateStr(d);
-    if (i === 0 && !productiveByDate.has(dateStr) && !scoresByDate.has(dateStr)) continue;
-    if (productiveDates.has(dateStr)) {
-      streak++;
-    } else {
-      break;
-    }
-  }
-
-  // Best streak (максимальная последовательность рабочих дней)
-  const allDates = Array.from(new Set([...productiveByDate.keys(), ...scoresByDate.keys()])).sort();
-  let bestStreak = 0;
-  let currentRun = 0;
-  let prevDate: Date | null = null;
-
-  for (const dateStr of allDates) {
-    const d = new Date(dateStr);
-    const dow = d.getDay();
-    if (dow === 0 || dow === 6) continue;
-
-    if (!productiveDates.has(dateStr)) {
-      currentRun = 0;
-      prevDate = null;
+    const ds = localDateStr(d);
+    if (i === 0) {
+      if (floorMet(ds)) streak++;
       continue;
     }
+    if (floorMet(ds)) streak++;
+    else break;
+  }
 
+  // Best streak: макс. серия календарных дней подряд с floor_met
+  const metDates = [...pointsByDate.keys()].filter((d) => floorMet(d)).sort();
+  let best_streak = 0;
+  let run = 0;
+  let prevDate: Date | null = null;
+  for (const ds of metDates) {
+    const d = new Date(ds);
     if (prevDate === null) {
-      currentRun = 1;
+      run = 1;
     } else {
-      let expectedDate = new Date(prevDate);
-      expectedDate.setDate(expectedDate.getDate() + 1);
-      while (expectedDate.getDay() === 0 || expectedDate.getDay() === 6) {
-        expectedDate.setDate(expectedDate.getDate() + 1);
-      }
-      if (d.getTime() === expectedDate.getTime()) {
-        currentRun++;
-      } else {
-        currentRun = 1;
-      }
+      const expected = new Date(prevDate);
+      expected.setDate(expected.getDate() + 1);
+      run = d.getTime() === expected.getTime() ? run + 1 : 1;
     }
-
-    bestStreak = Math.max(bestStreak, currentRun);
+    best_streak = Math.max(best_streak, run);
     prevDate = d;
   }
+
+  // Личный рекорд за окно
+  let personal_best_min = 0;
+  for (const ds of pointsByDate.keys()) {
+    personal_best_min = Math.max(personal_best_min, daySummary(ds).best_session_min);
+  }
+
+  const todaySummary = daySummary(todayStr);
+  const today_best_session_min = todaySummary.best_session_min;
+  const today_deep_work_minutes = todaySummary.deep_work_minutes;
+  const today_floor_met = today_best_session_min >= FOCUS_FLOOR_MINUTES;
+  const today_target_met = today_best_session_min >= target_minutes;
 
   // last7days
   const last7days = [];
   for (let i = 6; i >= 0; i--) {
     const d = new Date(today);
     d.setDate(d.getDate() - i);
-    const dateStr = localDateStr(d);
-    const scores = scoresByDate.get(dateStr);
+    const ds = localDateStr(d);
+    const s = daySummary(ds);
+    const scores = scoresByDate.get(ds);
     const avg = scores ? scores.reduce((a, b) => a + b, 0) / scores.length : null;
-    const { minutes, by_category } = productiveStats(dateStr);
     last7days.push({
-      date: dateStr,
-      avg_score: avg ? Math.round(avg * 10) / 10 : null,
+      date: ds,
       is_weekend: d.getDay() === 0 || d.getDay() === 6,
-      productive_minutes: minutes,
-      productive_by_category: by_category,
+      best_session_min: s.best_session_min,
+      deep_work_minutes: s.deep_work_minutes,
+      floor_met: s.best_session_min >= FOCUS_FLOOR_MINUTES,
+      target_met: s.best_session_min >= target_minutes,
+      avg_score: avg !== null ? Math.round(avg * 10) / 10 : null,
+      by_category: s.by_category,
     });
   }
 
-  res.json({ streak, best_streak: bestStreak, last7days });
+  res.json({
+    streak,
+    best_streak,
+    floor_minutes: FOCUS_FLOOR_MINUTES,
+    target_minutes,
+    today_best_session_min,
+    today_deep_work_minutes,
+    today_floor_met,
+    today_target_met,
+    personal_best_min,
+    last7days,
+  });
 });
 
 // DELETE /api/logs/:id

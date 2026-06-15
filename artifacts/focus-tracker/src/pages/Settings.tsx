@@ -393,7 +393,7 @@ export default function SettingsPage() {
             <span>10</span>
           </div>
           <p className="text-xs text-muted-foreground">
-            Sessions with score ≥ {form.focused_score_threshold} count toward "Focused Time".
+            Screens with score ≥ {form.focused_score_threshold} count as Deep Work and feed your focus sessions, daily goal and streak.
           </p>
         </div>
       </div>
