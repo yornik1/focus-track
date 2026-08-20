@@ -44,6 +44,7 @@ import {
   formatHabitDateLabel,
   getHabitCell,
   moveHabitId,
+  toKievDateKey,
   upsertHabitCell,
   type HabitDropPosition,
 } from "@/lib/habit-grid";
@@ -216,6 +217,7 @@ function HabitRow({
   habit,
   entries,
   weeks,
+  todayKey,
   pendingKey,
   onToggle,
   onEdit,
@@ -235,6 +237,7 @@ function HabitRow({
   habit: HabitDefinition;
   entries: HabitCell[];
   weeks: ReturnType<typeof buildHabitGridWeeks>;
+  todayKey: string;
   pendingKey: string | null;
   onToggle: (data: HabitManualUpdate) => void;
   onEdit: () => void;
@@ -256,6 +259,14 @@ function HabitRow({
     event.preventDefault();
     onKeyboardMove(event.key === "ArrowUp" ? -1 : 1);
   };
+
+  // Статистика по видимому окну (4 недели, без будущих дней) и статус на сегодня.
+  const visibleDays = weeks.flatMap((week) => week.days).filter((day) => !day.isFuture);
+  const doneCount = visibleDays.filter(
+    (day) => getHabitCell(entries, habit.id, day.date)?.done === true,
+  ).length;
+  const doneToday = getHabitCell(entries, habit.id, todayKey)?.done === true;
+  const atRisk = habit.current_streak > 0 && !doneToday;
 
   return (
     <div
@@ -295,8 +306,16 @@ function HabitRow({
               </span>
             )}
           </div>
-          <div className="mt-1 flex items-center gap-2 text-xs text-muted-foreground">
-            <span>streak <span className="font-medium text-foreground tabular-nums">{habit.current_streak}</span></span>
+          <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-muted-foreground">
+            <span>
+              streak <span className="font-medium text-foreground tabular-nums">{habit.current_streak}</span>
+              {habit.current_streak > 0 && <span className="ml-0.5" aria-hidden>🔥</span>}
+            </span>
+            <span className="tabular-nums" title="Done days in the visible 4 weeks">
+              · {doneCount}/{visibleDays.length}
+            </span>
+            {doneToday && <span className="text-green-400">· done today</span>}
+            {atRisk && <span className="font-medium text-amber-400">· keep alive today</span>}
             {habit.category && <span className="truncate">· {habit.category}</span>}
           </div>
           <div className="mt-1 flex items-center gap-0.5">
@@ -368,6 +387,91 @@ function HabitRow({
   );
 }
 
+function TodaySummary({
+  habits,
+  entries,
+  todayKey,
+  pendingKey,
+  onMark,
+}: {
+  habits: HabitDefinition[];
+  entries: HabitCell[];
+  todayKey: string;
+  pendingKey: string | null;
+  onMark: (habitId: string) => void;
+}) {
+  const withStatus = habits.map((habit) => ({
+    habit,
+    done: getHabitCell(entries, habit.id, todayKey)?.done === true,
+  }));
+  const total = withStatus.length;
+  const done = withStatus.filter((item) => item.done).length;
+  const todo = withStatus.filter((item) => !item.done);
+  const bestStreak = habits.reduce((max, habit) => Math.max(max, habit.current_streak), 0);
+  const allDone = total > 0 && done === total;
+  const pct = total > 0 ? Math.round((done / total) * 100) : 0;
+
+  return (
+    <div className="rounded-xl border border-border bg-card p-5">
+      <div className="flex flex-wrap items-center justify-between gap-4">
+        <div>
+          <div className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Today</div>
+          <div className="mt-1 text-2xl font-semibold text-foreground">
+            {total === 0 ? "No activities yet" : allDone ? "All done 🎉" : `${done} of ${total} done`}
+          </div>
+        </div>
+        <div className="text-right">
+          <div className="text-2xl font-bold tabular-nums text-green-400">
+            {bestStreak}
+            <span className="ml-1 text-base">🔥</span>
+          </div>
+          <div className="text-[11px] uppercase tracking-wide text-muted-foreground">best streak</div>
+        </div>
+      </div>
+
+      {total > 0 && (
+        <div className="mt-3 h-1.5 w-full overflow-hidden rounded-full bg-zinc-800">
+          <div className="h-full rounded-full bg-green-500 transition-all" style={{ width: `${pct}%` }} />
+        </div>
+      )}
+
+      {todo.length > 0 && (
+        <div className="mt-4">
+          <div className="mb-2 text-xs text-muted-foreground">To do today — click to check off</div>
+          <div className="flex flex-wrap gap-2">
+            {todo.map(({ habit }) => {
+              const key = cellKey(habit.id, todayKey);
+              const pending = pendingKey === key;
+              const tone = habit.auto_fill
+                ? "border-cyan-500/25 bg-cyan-500/5 text-cyan-100 hover:bg-cyan-500/15"
+                : "border-amber-500/30 bg-amber-500/10 text-amber-100 hover:bg-amber-500/20";
+              return (
+                <button
+                  key={habit.id}
+                  type="button"
+                  disabled={pending || pendingKey !== null}
+                  onClick={() => onMark(habit.id)}
+                  aria-label={`Mark ${habit.label} done today`}
+                  className={`flex items-center gap-2 rounded-full border px-3 py-1.5 text-sm transition-colors disabled:opacity-50 ${tone}`}
+                >
+                  <span className="max-w-[180px] truncate">{habit.label}</span>
+                  {habit.auto_fill && (
+                    <span className="text-[10px] uppercase tracking-wide text-cyan-300">auto</span>
+                  )}
+                  {habit.current_streak > 0 && (
+                    <span className="text-xs opacity-80">🔥{habit.current_streak}</span>
+                  )}
+                  <span className="opacity-70">{pending ? "…" : "✓"}</span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function HabitsPage() {
   const queryClient = useQueryClient();
   const [now, setNow] = useState(() => new Date());
@@ -386,6 +490,7 @@ export default function HabitsPage() {
 
   const weeks = useMemo(() => buildHabitGridWeeks(now), [now]);
   const days = weeks.flatMap((week) => week.days);
+  const todayKey = toKievDateKey(now);
   const from = days[0]?.date ?? "";
   const to = days[days.length - 1]?.date ?? "";
   const queryKey = ["habits", from, to] as const;
@@ -530,6 +635,16 @@ export default function HabitsPage() {
           </div>
         </div>
 
+        {data && data.habits.length > 0 && (
+          <TodaySummary
+            habits={data.habits}
+            entries={data.entries}
+            todayKey={todayKey}
+            pendingKey={pendingKey}
+            onMark={(habitId) => mutation.mutate({ date: todayKey, habit: habitId, done: true })}
+          />
+        )}
+
         <div className="overflow-x-auto rounded-lg border border-border bg-card">
           <div className="min-w-[1050px] p-4">
             <div className="grid grid-cols-[190px_repeat(4,minmax(0,1fr))] gap-3 items-end pb-3">
@@ -584,6 +699,7 @@ export default function HabitsPage() {
                 habit={habit}
                 entries={data.entries}
                 weeks={weeks}
+                todayKey={todayKey}
                 pendingKey={pendingKey}
                 onToggle={(next) => mutation.mutate(next)}
                 onEdit={() => {

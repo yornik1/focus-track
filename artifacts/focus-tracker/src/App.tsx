@@ -2,7 +2,6 @@ import { useState, useLayoutEffect, useRef, useEffect } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import TodayPage from "@/pages/Today";
 import HabitsPage from "@/pages/Habits";
-import HabitWidget from "@/pages/HabitWidget";
 import CalendarPage from "@/pages/Calendar";
 import DatabasePage from "@/pages/Database";
 import SettingsPage from "@/pages/Settings";
@@ -102,15 +101,10 @@ function Layout() {
   );
 }
 
-function isWidgetRoute(): boolean {
-  return window.location.pathname.replace(/^\/+/, "").split("/")[0] === "widget";
-}
-
 export default function App() {
-  // Полноэкранный виджет для «новой вкладки» — без шапки и навигации Focus.
   return (
     <QueryClientProvider client={queryClient}>
-      {isWidgetRoute() ? <HabitWidget /> : <Layout />}
+      <Layout />
     </QueryClientProvider>
   );
 }

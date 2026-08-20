@@ -187,8 +187,7 @@ interface LLMProvider {
 | `src/App.tsx` | Layout + навигация по табам (react state, без роутера) |
 | `src/api.ts` | HTTP клиент (fetch). Есть `USE_MOCK` флаг (сейчас `false`). Содержит mock-данные для offline разработки |
 | `src/pages/Today.tsx` | Главная: текущий score, heatmap по часам, streak |
-| `src/pages/Habits.tsx` | 4-недельная сетка и CRUD активностей |
-| `src/pages/HabitWidget.tsx` | Полноэкранный виджет для «новой вкладки» браузера (путь `/widget`) |
+| `src/pages/Habits.tsx` | 4-недельная сетка, панель «сегодня» и CRUD активностей |
 | `src/lib/habit-grid.ts` | Расчёт календарных недель/дат по Europe/Kiev и optimistic helpers |
 | `src/pages/Calendar.tsx` | Месячный календарь с цветами по avg score |
 | `src/pages/Database.tsx` | Таблица логов с фильтрами |
@@ -203,7 +202,7 @@ interface LLMProvider {
 
 **Habits UI:** вторая вкладка после Today и прямой путь `/habits`. Показывает текущую календарную неделю Пн–Вс и три предыдущие; будущие дни текущей недели disabled. Клик по клетке всегда пишет `source=manual` с optimistic update/rollback. Список берётся только из `habit_definitions`. CRUD-кнопки намеренно компактные: только иконки `+`, edit и delete с `aria-label`/tooltip; не возвращать текстовые подписи в строку. ID — внутренний стабильный ключ: сервер генерирует его из label, в форме его нет. Порядок меняется drag-and-drop за grip или стрелками ↑/↓ на сфокусированном grip; `sort_order` сохраняется через API с optimistic rollback.
 
-**Habit widget (`/widget`):** отдельная полноэкранная страница для «новой вкладки» браузера (Firefox New Tab Override → `http://127.0.0.1:5001/widget`). `App.tsx` рендерит `HabitWidget` в обход `Layout`, если первый сегмент пути — `widget` (без шапки и навигации Focus). Мотивационный акцент: крупный `current_streak` с 🔥 и полоса-цепь последних 14 дней (зелёные клетки, сегодня пульсирует, если не отмечено) — «не рвать цепь». Данные — тот же `GET /api/habits` за 4 недели, что и в основной сетке; ничего не пишет, только читает. Хиро сверху: `best streak` и `left today`. Только чтение — отмечать клетки по-прежнему на `/habits`.
+**Панель «сегодня» (вверху `/habits`):** над сеткой — карточка `TodaySummary`: прогресс «сделано N из M за сегодня», `best streak`, и список ещё не отмеченных на сегодня привычек как chip-кнопки (клик = отметить `done` за сегодня через ту же mutation, что и клетки). Manual-привычки подсвечены янтарным (нужно сделать руками), auto — циановым (заполнит вечерний крон). В строках привычек к стрику добавлены 🔥, счётчик `done/визуальные дни` и метки «keep alive today» / «done today». Годится как домашняя страница браузера (Firefox → Home and startup → Custom Homepage → `http://127.0.0.1:5001/habits`).
 
 ---
 
