@@ -79,6 +79,49 @@ export interface Status {
   last_screenshot: string;
 }
 
+export type HabitSource = "auto" | "manual";
+
+export interface HabitDefinition {
+  id: string;
+  label: string;
+  auto_fill: boolean;
+  category: string | null;
+  current_streak: number;
+}
+
+export interface HabitCell {
+  date: string;
+  habit: string;
+  done: boolean;
+  source: HabitSource;
+  updated_at: string;
+}
+
+export interface HabitsResponse {
+  habits: HabitDefinition[];
+  entries: HabitCell[];
+}
+
+export interface HabitManualUpdate {
+  date: string;
+  habit: string;
+  done: boolean;
+}
+
+export interface HabitDefinitionInput {
+  label: string;
+  auto_fill: boolean;
+  category: string | null;
+}
+
+export interface HabitDefinitionRecord extends HabitDefinitionInput {
+  id: string;
+  sort_order: number;
+  active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
 function randScore(): number {
   return Math.round(Math.random() * 10 * 10) / 10;
 }
@@ -211,6 +254,16 @@ const MOCK_STATUS: Status = {
   last_screenshot: "2025-05-06T15:28:00",
 };
 
+const MOCK_HABITS: HabitsResponse = {
+  habits: [
+    { id: "meditation", label: "Meditation", auto_fill: false, category: null, current_streak: 4 },
+    { id: "english_drill", label: "English drill", auto_fill: false, category: null, current_streak: 2 },
+    { id: "walk", label: "Walk", auto_fill: true, category: null, current_streak: 8 },
+    { id: "node_learning", label: "Node learning", auto_fill: true, category: null, current_streak: 1 },
+  ],
+  entries: [],
+};
+
 function buildCalendarMock(month: string): CalendarResponse {
   const [year, m] = month.split("-").map(Number);
   const daysInMonth = new Date(year, m, 0).getDate();
@@ -247,7 +300,16 @@ async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
     headers: { "Content-Type": "application/json" },
     ...options,
   });
-  if (!res.ok) throw new Error(`API error: ${res.status} ${res.statusText}`);
+  if (!res.ok) {
+    const text = await res.text();
+    let message: string | undefined;
+    try {
+      const body = JSON.parse(text) as { message?: unknown };
+      if (typeof body.message === "string") message = body.message;
+    } catch {}
+    if (message) throw new Error(message);
+    throw new Error(`API error: ${res.status} ${res.statusText}`);
+  }
   return readJsonResponse<T>(res);
 }
 
@@ -453,4 +515,68 @@ export async function pause(duration: number | "evening"): Promise<void> {
 export async function getStatus(): Promise<Status> {
   if (USE_MOCK) return { ...MOCK_STATUS };
   return apiFetch<Status>("/api/status");
+}
+
+export async function getHabits(from: string, to: string): Promise<HabitsResponse> {
+  if (USE_MOCK) {
+    return {
+      habits: MOCK_HABITS.habits.map((habit) => ({ ...habit })),
+      entries: MOCK_HABITS.entries
+        .filter((entry) => entry.date >= from && entry.date <= to)
+        .map((entry) => ({ ...entry })),
+    };
+  }
+  const params = new URLSearchParams({ from, to });
+  return apiFetch<HabitsResponse>(`/api/habits?${params}`);
+}
+
+export async function updateHabitManual(data: HabitManualUpdate): Promise<HabitCell> {
+  if (USE_MOCK) {
+    const cell: HabitCell = {
+      ...data,
+      source: "manual",
+      updated_at: new Date().toISOString(),
+    };
+    const index = MOCK_HABITS.entries.findIndex((entry) => entry.date === data.date && entry.habit === data.habit);
+    if (index === -1) {
+      MOCK_HABITS.entries.push(cell);
+    } else {
+      MOCK_HABITS.entries[index] = cell;
+    }
+    return { ...cell };
+  }
+  return apiFetch<HabitCell>("/api/habits", {
+    method: "POST",
+    body: JSON.stringify({ ...data, source: "manual" }),
+  });
+}
+
+export async function createHabitDefinition(data: HabitDefinitionInput): Promise<HabitDefinitionRecord> {
+  return apiFetch<HabitDefinitionRecord>("/api/habit-definitions", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+}
+
+export async function updateHabitDefinition(
+  id: string,
+  data: HabitDefinitionInput,
+): Promise<HabitDefinitionRecord> {
+  return apiFetch<HabitDefinitionRecord>(`/api/habit-definitions/${encodeURIComponent(id)}`, {
+    method: "PATCH",
+    body: JSON.stringify(data),
+  });
+}
+
+export async function reorderHabitDefinitions(ids: string[]): Promise<HabitDefinitionRecord[]> {
+  return apiFetch<HabitDefinitionRecord[]>("/api/habit-definitions/order", {
+    method: "PATCH",
+    body: JSON.stringify({ ids }),
+  });
+}
+
+export async function archiveHabitDefinition(id: string): Promise<HabitDefinitionRecord> {
+  return apiFetch<HabitDefinitionRecord>(`/api/habit-definitions/${encodeURIComponent(id)}`, {
+    method: "DELETE",
+  });
 }

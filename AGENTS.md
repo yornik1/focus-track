@@ -56,6 +56,7 @@ focus-track/
 |------|-----------|
 | `src/index.ts` | Инициализация SQLite (better-sqlite3 + Drizzle), CREATE TABLE при старте |
 | `src/schema/focus-log.ts` | Drizzle-схема таблицы `focus_log` |
+| `src/schema/habits.ts` | Drizzle-схемы habit-grid: клетки, определения и аудит |
 | `src/schema/index.ts` | Re-export схемы |
 | `src/app-settings.ts` | JSON-файл `focus-app-settings.json` рядом с БД. CRUD для настроек UI |
 
@@ -75,6 +76,15 @@ summary TEXT (max 200 chars)
 ```
 
 Функции: `readAppSettings()`, `writeAppSettings()`, `getDefaultAppSettings()`, `normalizeSettingsPayload()`.
+
+**Habit-grid (не связан с `focus_log`):**
+
+- `habits`: состояние клетки, composite PK `(date, habit)`, `done`, `source`, `updated_at`. Дата — `YYYY-MM-DD` по `Europe/Kiev`.
+- `habit_definitions`: конфигурация активностей (`id`, `label`, `auto_fill`, `category`, `sort_order`, `active`, timestamps).
+- `habit_events`: append-only аудит фактических INSERT/UPDATE клетки со старым/новым состоянием и actor.
+- Ручное состояние имеет абсолютный приоритет: `manual -> auto` блокируется SQLite-trigger даже при прямом SQL. Ручное снятие auto-клетки сохраняется как `done=0, source=manual` и также защищено.
+- Заблокированный auto-запрос и полный no-op не создают audit event и не меняют `updated_at`.
+- Удаление определения — мягкое (`active=0`): активность исчезает из сетки, но клетки и аудит сохраняются. ID определения после создания не меняется.
 
 ---
 
@@ -106,7 +116,8 @@ interface LLMProvider {
 | `src/index.ts` | Production entrypoint |
 | `src/app.ts` | Express app: CORS, JSON body, pino logger, маунт `/api` router |
 | `src/routes/index.ts` | Комбинирует sub-routers |
-| `src/routes/focus.ts` | **ВСЕ бизнес-эндпоинты** (stats, logs, settings, status, pause) |
+| `src/routes/focus.ts` | Эндпоинты stats, logs, settings, status, pause |
+| `src/routes/habits.ts` | Habit-grid, приоритеты клеток, аудит и CRUD определений |
 | `src/routes/health.ts` | `GET /api/health` |
 | `src/llm-connection-test.ts` | Проверка соединения с Gemini/Ollama (POST /api/settings/test) |
 | `src/lib/logger.ts` | Pino logger |
@@ -127,6 +138,46 @@ interface LLMProvider {
 | `GET /api/status` | DONE | `watcher_alive` = была запись за последние 10 мин |
 | `POST /api/pause` | DONE | Пауза на N минут или до вечера (файл ~/.focus-track-pause) |
 
+**Habit endpoints (`routes/habits.ts`):**
+
+| Endpoint | Описание |
+|----------|----------|
+| `GET /api/habits?from=YYYY-MM-DD&to=YYYY-MM-DD` | Активные определения, клетки диапазона и streak по полной истории |
+| `POST /api/habits` | Upsert клетки; default `source=manual`, auto никогда не перетирает manual |
+| `GET /api/habits/history?from=...&to=...&habit=...` | Audit events по убыванию времени |
+| `POST /api/habit-definitions` | Создать активность; ID автоматически slugify из label, коллизии получают `_2`, `_3` |
+| `PATCH /api/habit-definitions/order` | Сохранить полный новый порядок активных привычек |
+| `PATCH /api/habit-definitions/:id` | Изменить label, category и auto_fill; ID стабилен |
+| `DELETE /api/habit-definitions/:id` | Архивировать активность без удаления истории |
+
+Стартовые определения: `meditation`, `english_drill`, `walk` (auto), `node_learning` (auto). Внешние агенты могут заполнять auto-клетки через API или SQL; Garmin/focus_log сервер не интерпретирует.
+
+**Кто заполняет auto-клетки (с 2026-07-21).** Наполнитель живёт вне репозитория —
+`~/me/bin/habits-autofill.py`, детерминированный скрипт без LLM. Запускается вечерним
+кроном пинателя (`~/me/bin/agent-cron.sh evening-review`, LaunchAgent
+`com.mich.pinatel-evening-review`, 21:00 + ретрай 22:30) до LLM-цепочки и независимо от
+её успеха: цепочка ложится на лимитах, клетки должны проставиться всё равно.
+
+| Активность | Правило | Источник |
+|------------|---------|----------|
+| `walk` 🚶 | `steps >= 8000` | `~/me/journal/activity/<date>.md` (Garmin, кладётся в 20:50) |
+| `node_learning` 🟩 | `>= 30` мин `category='code'` **или** закрытый дрилл | `focus_log` + `~/PycharmProjects/drills/PROGRESS.md` |
+
+Контракт со стороны сервера — менять только синхронно со скриптом:
+- Пишутся **только положительные** клетки. Нет строки = «нет данных», не «не сделано».
+- `manual` неприкосновенен: скрипт опирается и на `WHERE habits.source <> 'manual'`,
+  и на триггер `habits_protect_manual_before_update`. Снятая руками auto-клетка остаётся снятой.
+- `habit_events` append-only; повторный прогон не трогает `updated_at` и не плодит события.
+- `auto_fill=0` в UI — это и есть выключатель: скрипт молчит по такой активности.
+- Окно 7 дней лечит поздний досинк Garmin (в 21:00 сегодняшний код ещё не весь набран —
+  добирается ретраем в 22:30 и следующим вечером).
+- Минуты кода = сумма разрывов между семплами с потолком 10 мин, а не «семплы × интервал»:
+  интервал съёмки плавает 44с..10мин.
+- Дни — `Europe/Kiev` через `zoneinfo`, не смещением `+3` (сломается на переходе на зимнее).
+
+Пороги и расписание правятся на стороне vault, не здесь. Прогнать руками:
+`python3 ~/me/bin/habits-autofill.py --days 7 [--dry-run]`.
+
 ---
 
 ### `artifacts/focus-tracker` — Frontend
@@ -136,6 +187,9 @@ interface LLMProvider {
 | `src/App.tsx` | Layout + навигация по табам (react state, без роутера) |
 | `src/api.ts` | HTTP клиент (fetch). Есть `USE_MOCK` флаг (сейчас `false`). Содержит mock-данные для offline разработки |
 | `src/pages/Today.tsx` | Главная: текущий score, heatmap по часам, streak |
+| `src/pages/Habits.tsx` | 4-недельная сетка и CRUD активностей |
+| `src/pages/HabitWidget.tsx` | Полноэкранный виджет для «новой вкладки» браузера (путь `/widget`) |
+| `src/lib/habit-grid.ts` | Расчёт календарных недель/дат по Europe/Kiev и optimistic helpers |
 | `src/pages/Calendar.tsx` | Месячный календарь с цветами по avg score |
 | `src/pages/Database.tsx` | Таблица логов с фильтрами |
 | `src/pages/Settings.tsx` | Provider, token, intervals, test connection, pause |
@@ -146,6 +200,10 @@ interface LLMProvider {
 **UI-библиотека:** shadcn/ui (Radix + Tailwind). Компоненты в `components/ui/` — сгенерированы, не менять вручную.
 
 **React Query:** `@tanstack/react-query` для кэширования API-вызовов. `staleTime: 30s`.
+
+**Habits UI:** вторая вкладка после Today и прямой путь `/habits`. Показывает текущую календарную неделю Пн–Вс и три предыдущие; будущие дни текущей недели disabled. Клик по клетке всегда пишет `source=manual` с optimistic update/rollback. Список берётся только из `habit_definitions`. CRUD-кнопки намеренно компактные: только иконки `+`, edit и delete с `aria-label`/tooltip; не возвращать текстовые подписи в строку. ID — внутренний стабильный ключ: сервер генерирует его из label, в форме его нет. Порядок меняется drag-and-drop за grip или стрелками ↑/↓ на сфокусированном grip; `sort_order` сохраняется через API с optimistic rollback.
+
+**Habit widget (`/widget`):** отдельная полноэкранная страница для «новой вкладки» браузера (Firefox New Tab Override → `http://127.0.0.1:5001/widget`). `App.tsx` рендерит `HabitWidget` в обход `Layout`, если первый сегмент пути — `widget` (без шапки и навигации Focus). Мотивационный акцент: крупный `current_streak` с 🔥 и полоса-цепь последних 14 дней (зелёные клетки, сегодня пульсирует, если не отмечено) — «не рвать цепь». Данные — тот же `GET /api/habits` за 4 недели, что и в основной сетке; ничего не пишет, только читает. Хиро сверху: `best streak` и `left today`. Только чтение — отмечать клетки по-прежнему на `/habits`.
 
 ---
 

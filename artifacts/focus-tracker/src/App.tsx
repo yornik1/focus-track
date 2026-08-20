@@ -1,6 +1,8 @@
 import { useState, useLayoutEffect, useRef, useEffect } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import TodayPage from "@/pages/Today";
+import HabitsPage from "@/pages/Habits";
+import HabitWidget from "@/pages/HabitWidget";
 import CalendarPage from "@/pages/Calendar";
 import DatabasePage from "@/pages/Database";
 import SettingsPage from "@/pages/Settings";
@@ -9,28 +11,42 @@ const queryClient = new QueryClient({
   defaultOptions: { queries: { staleTime: 30_000, retry: 1 } },
 });
 
-type Tab = "today" | "calendar" | "database" | "settings";
+type Tab = "today" | "habits" | "calendar" | "database" | "settings";
 
 const TABS: { id: Tab; label: string }[] = [
   { id: "today", label: "Today" },
+  { id: "habits", label: "Habits" },
   { id: "calendar", label: "Calendar" },
   { id: "database", label: "Database" },
   { id: "settings", label: "Settings" },
 ];
 
-function tabFromHash(): Tab {
+function isTab(value: string): value is Tab {
+  return TABS.some((t) => t.id === value);
+}
+
+function tabFromLocation(): Tab {
   const id = window.location.hash.replace(/^#/, "");
-  return TABS.some((t) => t.id === id) ? (id as Tab) : "today";
+  if (isTab(id)) return id;
+
+  const pathId = window.location.pathname.replace(/^\/+/, "").split("/")[0];
+  if (isTab(pathId)) return pathId;
+
+  return "today";
 }
 
 function Layout() {
-  const [activeTab, setActiveTab] = useState<Tab>(tabFromHash);
+  const [activeTab, setActiveTab] = useState<Tab>(tabFromLocation);
   const mainRef = useRef<HTMLElement>(null);
 
   useEffect(() => {
-    const onHashChange = () => setActiveTab(tabFromHash());
-    window.addEventListener("hashchange", onHashChange);
-    return () => window.removeEventListener("hashchange", onHashChange);
+    const onLocationChange = () => setActiveTab(tabFromLocation());
+    window.addEventListener("popstate", onLocationChange);
+    window.addEventListener("hashchange", onLocationChange);
+    return () => {
+      window.removeEventListener("popstate", onLocationChange);
+      window.removeEventListener("hashchange", onLocationChange);
+    };
   }, []);
 
   useLayoutEffect(() => {
@@ -39,7 +55,8 @@ function Layout() {
   }, [activeTab]);
 
   const selectTab = (tab: Tab) => {
-    window.location.hash = tab;
+    const nextLocation = tab === "habits" ? "/habits" : `/#${tab}`;
+    window.history.pushState(null, "", nextLocation);
     setActiveTab(tab);
   };
 
@@ -76,6 +93,7 @@ function Layout() {
 
       <main ref={mainRef} className="flex-1 max-w-6xl mx-auto w-full px-6 py-8">
         {activeTab === "today" && <TodayPage />}
+        {activeTab === "habits" && <HabitsPage />}
         {activeTab === "calendar" && <CalendarPage />}
         {activeTab === "database" && <DatabasePage />}
         {activeTab === "settings" && <SettingsPage />}
@@ -84,10 +102,15 @@ function Layout() {
   );
 }
 
+function isWidgetRoute(): boolean {
+  return window.location.pathname.replace(/^\/+/, "").split("/")[0] === "widget";
+}
+
 export default function App() {
+  // Полноэкранный виджет для «новой вкладки» — без шапки и навигации Focus.
   return (
     <QueryClientProvider client={queryClient}>
-      <Layout />
+      {isWidgetRoute() ? <HabitWidget /> : <Layout />}
     </QueryClientProvider>
   );
 }

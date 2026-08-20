@@ -192,3 +192,6 @@ mac/Focus Capture.app/
 
 # OMC runtime state — не коммитить
 .omc/
+
+# graphify skill output (generated knowledge graph)
+graphify-out/
