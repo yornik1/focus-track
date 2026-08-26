@@ -8,6 +8,7 @@ import {
   ResponsiveContainer,
   Scatter,
   ScatterChart,
+  Tooltip,
   XAxis,
   YAxis,
   ZAxis,
@@ -25,6 +26,7 @@ import {
   groupThousands,
   shiftWeek,
   buildScatter,
+  scatterInsight,
   type ScatterMode,
   type ScatterAxis,
 } from "@/lib/week-format";
@@ -266,17 +268,72 @@ function Toggle<T extends string>({
   );
 }
 
-function InsightScatter({ series }: { series: WeeklyStats["daily_series"] }) {
+/** «2026-08-26» → «Aug 26» (в UTC, чтобы дата не съезжала). */
+function shortDate(iso: string): string {
+  const [y, m, d] = iso.split("-").map(Number);
+  return new Intl.DateTimeFormat("en-US", { day: "numeric", month: "short", timeZone: "UTC" }).format(
+    new Date(Date.UTC(y, m - 1, d)),
+  );
+}
+
+interface ScatterDatum {
+  x: number;
+  y: number;
+  label: string;
+}
+
+function ScatterTooltip({
+  active,
+  payload,
+  axis,
+  mode,
+}: {
+  active?: boolean;
+  payload?: { payload?: ScatterDatum }[];
+  axis: ScatterAxis;
+  mode: ScatterMode;
+}) {
+  if (!active || !payload || payload.length === 0) return null;
+  const p = payload[0]?.payload;
+  if (!p) return null;
+  const when = mode === "week" ? `Week of ${shortDate(p.label)}` : shortDate(p.label);
+  const xPart = axis === "anki" ? `Anki ${groupThousands(p.x)}` : `Sleep ${p.x}h`;
+  return (
+    <div className="rounded-md border border-border bg-popover px-2.5 py-1.5 text-xs shadow-md">
+      <div className="font-medium text-foreground">{when}</div>
+      <div className="text-muted-foreground">
+        {xPart} · effort {p.y}h
+      </div>
+    </div>
+  );
+}
+
+function InsightScatter({ series, week }: { series: WeeklyStats["daily_series"]; week: WeeklyStats["week"] }) {
   const [mode, setMode] = useState<ScatterMode>("day");
   const [axis, setAxis] = useState<ScatterAxis>("sleep");
   const result = buildScatter(series, mode, axis);
   const segment = trendSegment(result.points.map((p) => ({ sleep_h: p.x, effort_h: p.y })));
 
+  // Точки просматриваемой недели подсвечиваем отдельным цветом.
+  const inViewedWeek = (label: string): boolean =>
+    mode === "week" ? label === week.start : label >= week.start && label <= week.end;
+  const viewedPts = result.points.filter((p) => inViewedWeek(p.label));
+  const otherPts = result.points.filter((p) => !inViewedWeek(p.label));
+
+  const rShown = result.pearson_r === null ? "—" : (result.pearson_r > 0 ? "+" : "") + result.pearson_r.toFixed(2);
+
   return (
     <div className="rounded-xl border border-border bg-card p-4">
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-        <div className="text-[11px] uppercase tracking-wider text-muted-foreground">
-          {AXIS_LABEL[axis]} ↔ Effort · {MODE_LABEL[mode]}
+        <div className="flex items-center gap-3">
+          <div className="text-[11px] uppercase tracking-wider text-muted-foreground">
+            {AXIS_LABEL[axis]} ↔ Effort · {MODE_LABEL[mode]}
+          </div>
+          {viewedPts.length > 0 && (
+            <span className="flex items-center gap-1 text-[11px] text-muted-foreground">
+              <span className="h-2 w-2 rounded-full" style={{ backgroundColor: GREEN }} /> this week
+            </span>
+          )}
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <Toggle<ScatterAxis>
@@ -311,22 +368,28 @@ function InsightScatter({ series }: { series: WeeklyStats["daily_series"] }) {
                 domain={["dataMin - 0.5", "dataMax + 0.5"]}
               />
               <YAxis type="number" dataKey="y" name="effort" unit="h" stroke="#6b7280" fontSize={11} />
-              <ZAxis range={[40, 40]} />
+              <ZAxis range={[45, 45]} />
+              <Tooltip
+                cursor={{ strokeDasharray: "3 3" }}
+                content={(props) => <ScatterTooltip {...props} axis={axis} mode={mode} />}
+              />
               {segment && (
                 <ReferenceLine segment={segment} stroke="#6b7280" strokeDasharray="4 4" ifOverflow="extendDomain" />
               )}
-              <Scatter data={result.points} fill={BLUE} fillOpacity={0.7} isAnimationActive={false} />
+              <Scatter data={otherPts} fill={BLUE} fillOpacity={0.6} isAnimationActive={false} />
+              <Scatter data={viewedPts} fill={GREEN} fillOpacity={0.95} isAnimationActive={false} />
             </ScatterChart>
           </ResponsiveContainer>
         </div>
-        <div className="text-center sm:w-40">
-          <div className="text-3xl font-bold text-foreground">
-            {result.pearson_r === null ? "—" : (result.pearson_r > 0 ? "+" : "") + result.pearson_r.toFixed(2)}
+        <div className="sm:w-44">
+          <div className="text-center">
+            <div className="text-3xl font-bold text-foreground">{rShown}</div>
+            <div className="mt-1 text-[11px] uppercase tracking-wider text-muted-foreground">Pearson correlation</div>
+            <div className="mt-0.5 text-xs text-muted-foreground">
+              n = {result.n} {mode === "week" ? "weeks" : "days"}
+            </div>
           </div>
-          <div className="mt-1 text-[11px] uppercase tracking-wider text-muted-foreground">Pearson correlation</div>
-          <div className="mt-0.5 text-xs text-muted-foreground">
-            n = {result.n} {mode === "week" ? "weeks" : "days"}
-          </div>
+          <p className="mt-3 text-xs leading-relaxed text-muted-foreground">{scatterInsight(result.pearson_r, axis)}</p>
         </div>
       </div>
     </div>
@@ -418,7 +481,7 @@ export default function WeekPage() {
 
       <ByDayTable rows={data.by_day} />
       <CategoryBars categories={data.categories} />
-      <InsightScatter series={data.daily_series} />
+      <InsightScatter series={data.daily_series} week={data.week} />
 
       <p className="text-xs leading-relaxed text-muted-foreground">
         <span className="font-semibold text-foreground">Data.</span> focus-track (screenshot sampling, only while

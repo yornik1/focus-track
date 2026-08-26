@@ -142,3 +142,27 @@ export function buildScatter(series: DailyPoint[], mode: ScatterMode, axis: Scat
   );
   return { points, pearson_r: r === null ? null : r2(r), n: points.length };
 }
+
+/**
+ * Одна строка простым языком по знаку/силе корреляции.
+ * Осторожно с причинностью: сильная связь = «ты включился», не «X вызывает усилие».
+ */
+export function scatterInsight(r: number | null, axis: ScatterAxis): string {
+  if (r === null) return "Not enough overlapping days to correlate.";
+  const a = Math.abs(r);
+  if (a < 0.2) return "No relationship — these move independently.";
+  if (a < 0.5) {
+    return r > 0
+      ? "Weak positive link — a faint tendency, not something to lean on."
+      : "Weak inverse link — a faint opposite tendency.";
+  }
+  // сильная связь
+  if (axis === "anki") {
+    return r > 0
+      ? "Strong link — your Anki days are your working days. That's “you showed up”, not a cause."
+      : "Strong inverse — heavy Anki days tend to be your low-effort days.";
+  }
+  return r > 0
+    ? "Strong link — more sleep goes with more effort. Association, not proof of cause."
+    : "Strong inverse — more sleep goes with less effort here.";
+}

@@ -1,6 +1,15 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { deltaDir, formatDelta, groupThousands, shiftWeek, buildScatter, pearson, type DailyPoint } from "./week-format";
+import {
+  deltaDir,
+  formatDelta,
+  groupThousands,
+  shiftWeek,
+  buildScatter,
+  pearson,
+  scatterInsight,
+  type DailyPoint,
+} from "./week-format";
 
 test("deltaDir: знак и flat", () => {
   assert.equal(deltaDir(12), "up");
@@ -62,4 +71,13 @@ test("buildScatter anki axis: 0 повторений не выпадает", () 
 
 test("pearson (client): идеальная корреляция", () => {
   assert.ok(Math.abs((pearson([1, 2, 3], [2, 4, 6]) as number) - 1) < 1e-9);
+});
+
+test("scatterInsight: null / нет связи / слабая / сильная", () => {
+  assert.match(scatterInsight(null, "anki"), /Not enough/);
+  assert.match(scatterInsight(0.1, "sleep"), /No relationship/);
+  assert.match(scatterInsight(-0.3, "sleep"), /Weak inverse/);
+  assert.match(scatterInsight(0.6, "anki"), /showed up/); // причинность-оговорка для Anki
+  assert.match(scatterInsight(0.7, "sleep"), /not proof of cause/);
+  assert.match(scatterInsight(-0.8, "anki"), /Strong inverse/);
 });
