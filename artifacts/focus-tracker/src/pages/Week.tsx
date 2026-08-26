@@ -268,11 +268,11 @@ function Toggle<T extends string>({
   );
 }
 
-/** «2026-08-26» → «Aug 26» (в UTC, чтобы дата не съезжала). */
-function shortDate(iso: string): string {
+/** «2026-08-26» → «Aug 26» (в UTC, чтобы дата не съезжала). offsetDays сдвигает дату. */
+function shortDate(iso: string, offsetDays = 0): string {
   const [y, m, d] = iso.split("-").map(Number);
   return new Intl.DateTimeFormat("en-US", { day: "numeric", month: "short", timeZone: "UTC" }).format(
-    new Date(Date.UTC(y, m - 1, d)),
+    new Date(Date.UTC(y, m - 1, d + offsetDays)),
   );
 }
 
@@ -296,7 +296,8 @@ function ScatterTooltip({
   if (!active || !payload || payload.length === 0) return null;
   const p = payload[0]?.payload;
   if (!p) return null;
-  const when = mode === "week" ? `Week of ${shortDate(p.label)}` : shortDate(p.label);
+  // В недельном режиме показываем весь диапазон (Пн–Вс), а не только понедельник.
+  const when = mode === "week" ? `${shortDate(p.label)} – ${shortDate(p.label, 6)}` : shortDate(p.label);
   const xPart = axis === "anki" ? `Anki ${groupThousands(p.x)}` : `Sleep ${p.x}h`;
   return (
     <div className="rounded-md border border-border bg-popover px-2.5 py-1.5 text-xs shadow-md">
