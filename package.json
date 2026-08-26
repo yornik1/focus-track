@@ -6,7 +6,7 @@
   "scripts": {
     "preinstall": "sh -c 'rm -f package-lock.json yarn.lock; case \"$npm_config_user_agent\" in pnpm/*) ;; *) echo \"Use pnpm instead\" >&2; exit 1 ;; esac'",
     "dev": "cd artifacts/api-server && pnpm run dev",
-    "test": "node --test test/**/*.test.mjs && pnpm --filter @workspace/categories run test && pnpm --filter @workspace/api-server run test && pnpm --filter @workspace/focus-tracker run test",
+    "test": "node --test test/**/*.test.mjs && pnpm --filter @workspace/categories run test && pnpm --filter @workspace/scripts run test && pnpm --filter @workspace/api-server run test && pnpm --filter @workspace/focus-tracker run test",
     "build": "pnpm run typecheck && pnpm -r --if-present run build",
     "typecheck:libs": "tsc --build",
     "typecheck": "pnpm run typecheck:libs && pnpm -r --filter \"./artifacts/**\" --filter \"./scripts\" --if-present run typecheck"

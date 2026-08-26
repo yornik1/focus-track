@@ -14,3 +14,12 @@ export {
   medianActiveBest,
 } from "@workspace/categories";
 export type { FocusPoint, FocusSession, FocusSessionOptions, DailyFocusSummary } from "@workspace/categories";
+export {
+  pearson,
+  wowDelta,
+  mondayOf,
+  addDays as addDaysStr,
+  weekBounds,
+  computeEffort,
+} from "@workspace/categories";
+export type { WeeklyEffort } from "@workspace/categories";

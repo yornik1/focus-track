@@ -7,15 +7,21 @@
     "hello": "tsx ./src/hello.ts",
     "analyze": "tsx ./src/analyze-screenshot.ts",
     "categories:migrate": "tsx ./src/migrate-categories.ts",
+    "import:garmin": "tsx ./src/import-garmin.ts",
+    "import:anki": "tsx ./src/import-anki.ts",
+    "import:external": "tsx ./src/import-garmin.ts && tsx ./src/import-anki.ts",
+    "test": "node --import tsx --test src/lib/*.test.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
     "@workspace/categories": "workspace:*",
     "@workspace/db": "workspace:*",
     "@workspace/llm": "workspace:*",
+    "better-sqlite3": "^11.0.0",
     "dotenv": "^17.4.2"
   },
   "devDependencies": {
+    "@types/better-sqlite3": "^7.6.11",
     "@types/node": "catalog:",
     "tsx": "catalog:"
   }

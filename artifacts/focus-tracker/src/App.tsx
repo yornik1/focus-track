@@ -1,6 +1,7 @@
 import { useState, useLayoutEffect, useRef, useEffect } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import TodayPage from "@/pages/Today";
+import WeekPage from "@/pages/Week";
 import HabitsPage from "@/pages/Habits";
 import CalendarPage from "@/pages/Calendar";
 import DatabasePage from "@/pages/Database";
@@ -10,10 +11,11 @@ const queryClient = new QueryClient({
   defaultOptions: { queries: { staleTime: 30_000, retry: 1 } },
 });
 
-type Tab = "today" | "habits" | "calendar" | "database" | "settings";
+type Tab = "today" | "week" | "habits" | "calendar" | "database" | "settings";
 
 const TABS: { id: Tab; label: string }[] = [
   { id: "today", label: "Today" },
+  { id: "week", label: "Week" },
   { id: "habits", label: "Habits" },
   { id: "calendar", label: "Calendar" },
   { id: "database", label: "Database" },
@@ -92,6 +94,7 @@ function Layout() {
 
       <main ref={mainRef} className="flex-1 max-w-6xl mx-auto w-full px-6 py-8">
         {activeTab === "today" && <TodayPage />}
+        {activeTab === "week" && <WeekPage />}
         {activeTab === "habits" && <HabitsPage />}
         {activeTab === "calendar" && <CalendarPage />}
         {activeTab === "database" && <DatabasePage />}

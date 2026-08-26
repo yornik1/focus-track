@@ -517,6 +517,68 @@ export async function getStatus(): Promise<Status> {
   return apiFetch<Status>("/api/status");
 }
 
+// --- Weekly Mirror ---------------------------------------------------------
+
+export type CategoryKind = "productive" | "neutral" | "distracting";
+
+export interface WeeklyMetric {
+  value: number;
+  delta_pct: number | null;
+  source?: "garmin";
+}
+
+export interface WeeklyByDay {
+  date: string;
+  dow: string;
+  effort_h: number;
+  active_h: number;
+  focus_pct: number;
+  focus_score: number | null;
+  anki_reviews: number;
+  steps: number | null;
+  sleep_h: number | null;
+}
+
+export interface WeeklyCategory {
+  category: string;
+  hours: number;
+  kind: CategoryKind;
+}
+
+export interface WeeklyDailyPoint {
+  date: string;
+  effort_h: number;
+  sleep_h: number | null;
+  steps: number | null;
+  anki_reviews: number;
+}
+
+export interface WeeklyStats {
+  week: { start: string; end: string; label: string; is_current: boolean; is_partial: boolean; elapsed_days: number };
+  cards: {
+    effort_h_per_day: WeeklyMetric;
+    effort_total_h: WeeklyMetric;
+    active_h: WeeklyMetric;
+    focus_leak_h: WeeklyMetric;
+    focus_pct: WeeklyMetric;
+    focus_score: WeeklyMetric;
+    anki_reviews: WeeklyMetric;
+    anki_minutes: WeeklyMetric;
+    steps_per_day: WeeklyMetric;
+    sleep_avg_h: WeeklyMetric;
+  };
+  weekly_effort_history: { week_start: string; effort_h_per_day: number; is_current: boolean }[];
+  by_day: WeeklyByDay[];
+  categories: WeeklyCategory[];
+  daily_series: WeeklyDailyPoint[];
+  coverage: { days_with_data: number };
+}
+
+export async function getWeeklyStats(start?: string): Promise<WeeklyStats> {
+  const query = start ? `?start=${encodeURIComponent(start)}` : "";
+  return apiFetch<WeeklyStats>(`/api/stats/weekly${query}`);
+}
+
 export async function getHabits(from: string, to: string): Promise<HabitsResponse> {
   if (USE_MOCK) {
     return {

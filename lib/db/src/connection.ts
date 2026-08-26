@@ -114,6 +114,31 @@ sqlite.exec(`
   END;
 `);
 
+// Дневные сводки внешних источников (наполняются импортёрами из scripts/, не сервером).
+sqlite.exec(`
+  CREATE TABLE IF NOT EXISTS garmin_daily (
+    date TEXT PRIMARY KEY CHECK (
+      date GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]'
+      AND date(date, '+0 days') = date
+    ),
+    steps INTEGER,
+    sleep_minutes INTEGER,
+    resting_hr INTEGER,
+    source TEXT NOT NULL DEFAULT 'garmin',
+    updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+  );
+
+  CREATE TABLE IF NOT EXISTS anki_daily (
+    date TEXT PRIMARY KEY CHECK (
+      date GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]'
+      AND date(date, '+0 days') = date
+    ),
+    reviews INTEGER NOT NULL DEFAULT 0,
+    seconds INTEGER NOT NULL DEFAULT 0,
+    updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+  );
+`);
+
 type TableColumn = { name: string };
 
 function habitDefinitionColumns(): Set<string> {

@@ -56,6 +56,8 @@ focus-track/
 |------|-----------|
 | `src/index.ts` | Инициализация SQLite (better-sqlite3 + Drizzle), CREATE TABLE при старте |
 | `src/schema/focus-log.ts` | Drizzle-схема таблицы `focus_log` |
+| `src/schema/garmin-daily.ts` | Drizzle-схема `garmin_daily` (шаги/сон из Garmin, наполняет импортёр) |
+| `src/schema/anki-daily.ts` | Drizzle-схема `anki_daily` (revlow: reviews/seconds, наполняет импортёр) |
 | `src/schema/index.ts` | Re-export схемы |
 | `src/app-settings.ts` | JSON-файл `focus-app-settings.json` рядом с БД. CRUD для настроек UI |
 
@@ -67,6 +69,12 @@ timestamp INTEGER (Unix seconds)
 category TEXT ("code" | "video" | "social" | "idle")
 focus_score REAL (0-10)
 summary TEXT (max 200 chars)
+```
+
+**Таблицы `garmin_daily` / `anki_daily`** (внешние источники, наполняются импортёрами из `scripts/`, сервер их не парсит):
+```
+garmin_daily: date TEXT PK, steps INTEGER, sleep_minutes INTEGER, resting_hr INTEGER, source TEXT, updated_at
+anki_daily:   date TEXT PK, reviews INTEGER, seconds INTEGER, updated_at
 ```
 
 **AppSettings** (файл `focus-app-settings.json`, лежит рядом с `focus.db`):
@@ -118,6 +126,7 @@ interface LLMProvider {
 | `GET /api/stats/today` | DONE | Статистика дня: score, deep_work_minutes, longest_session_min, focus_sessions, distraction_minutes, hourly heatmap |
 | `GET /api/stats/calendar?month=YYYY-MM` | DONE | Avg score по дням месяца |
 | `GET /api/stats/streak` | DONE | Deep Work стрик (floor 15 мин/день, все дни), адаптивная цель `target_minutes`, `best_streak`, `personal_best_min`, last7days с `best_session_min`/`floor_met`/`target_met` |
+| `GET /api/stats/weekly?start=YYYY-MM-DD` | DONE | «Зеркало недели»: cards с WoW-дельтами (усилие/активное/**focus_leak**=active−effort/фокус/score/Anki/Garmin шаги+сон), by_day, categories, weekly_effort_history (14 нед), sleep↔effort scatter + Пирсон, daily_series (для интерактивного скаттера day/lag/week). По умолчанию — последняя **завершённая** неделя; для незавершённой `is_partial`/`elapsed_days`, дельты по сопоставимому отрезку. Роутер `routes/weekly.ts` |
 | `GET /api/logs` | DONE | Фильтрация: date, date_from, date_to, category, min/max_score |
 | `PATCH /api/logs/:id` | DONE | Обновить category/score/summary |
 | `DELETE /api/logs/:id` | DONE | Удалить запись |
@@ -136,6 +145,7 @@ interface LLMProvider {
 | `src/App.tsx` | Layout + навигация по табам (react state, без роутера) |
 | `src/api.ts` | HTTP клиент (fetch). Есть `USE_MOCK` флаг (сейчас `false`). Содержит mock-данные для offline разработки |
 | `src/pages/Today.tsx` | Главная: текущий score, heatmap по часам, streak |
+| `src/pages/Week.tsx` | «Weekly Mirror»: недельная сводка (focus + Anki + Garmin), recharts бар+scatter |
 | `src/pages/Calendar.tsx` | Месячный календарь с цветами по avg score |
 | `src/pages/Database.tsx` | Таблица логов с фильтрами |
 | `src/pages/Settings.tsx` | Provider, token, intervals, test connection, pause |
@@ -154,10 +164,23 @@ interface LLMProvider {
 | Файл | Назначение |
 |------|-----------|
 | `src/analyze-screenshot.ts` | Главный скрипт: читает JPEG → base64 → LLM → INSERT в focus_log |
+| `src/import-garmin.ts` | Импорт `garmin_daily` из vault-журналов (`$GARMIN_JOURNAL_DIR`, по умолч. `~/me/journal/activity`) |
+| `src/import-anki.ts` | Импорт `anki_daily` из revlog (КОПИЯ коллекции в tmp; `$ANKI_COLLECTION` override) |
+| `src/lib/garmin-parse.ts`, `src/lib/anki-aggregate.ts` | Чистые парсеры/свёртки (юнит-тесты) |
 
 **Вызов:** `pnpm --filter @workspace/scripts run analyze <path-to-jpeg>`
 
 Логика: читает AppSettings из JSON (если есть), иначе env vars. Создаёт провайдера, анализирует, пишет в БД, выводит JSON в stdout.
+
+**Импортёры внешних данных** (для «Weekly Mirror»), идемпотентный upsert, окно `--days N` (по умолч. 120):
+
+```bash
+pnpm --filter @workspace/scripts run import:garmin    # Garmin шаги/сон → garmin_daily
+pnpm --filter @workspace/scripts run import:anki      # Anki revlog → anki_daily
+pnpm --filter @workspace/scripts run import:external  # оба сразу
+```
+
+Гонять по вечернему крону рядом с `habits-autofill` (граница repo/vault: сервер внешние источники не читает, наполняют импортёры).
 
 ---
 
