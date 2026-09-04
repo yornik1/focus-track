@@ -59,6 +59,8 @@ export default function SettingsPage() {
   const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null);
   const [saved, setSaved] = useState(false);
   const [tokenSaving, setTokenSaving] = useState(false);
+  const [backupTests, setBackupTests] = useState<Record<number, { success: boolean; message: string }>>({});
+  const [backupTestingIdx, setBackupTestingIdx] = useState<number | null>(null);
   const settingsHydrated = useRef(false);
   const tokenSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -119,6 +121,9 @@ export default function SettingsPage() {
 
   const tokenDirty =
     !!currentSettings && form.token.trim() !== currentSettings.token.trim();
+  const tokensDirty =
+    !!currentSettings &&
+    cleanTokens(form.tokens).join(" ") !== cleanTokens(currentSettings.tokens ?? []).join(" ");
 
   const geminiModelsQuery = useQuery({
     queryKey: ["gemini-models", tokenDirty ? form.token : "saved"],
@@ -144,10 +149,40 @@ export default function SettingsPage() {
 
   const updateBackupToken = (index: number, value: string) => {
     setForm((f) => ({ ...f, tokens: f.tokens.map((t, i) => (i === index ? value : t)) }));
+    // Изменили ключ — прежний результат теста для этой строки больше не актуален.
+    setBackupTests((r) => {
+      const n = { ...r };
+      delete n[index];
+      return n;
+    });
   };
   const addBackupToken = () => setForm((f) => ({ ...f, tokens: [...f.tokens, ""] }));
   const removeBackupToken = (index: number) => {
     setForm((f) => ({ ...f, tokens: f.tokens.filter((_, i) => i !== index) }));
+    setBackupTests({}); // индексы сдвигаются — сбрасываем результаты тестов
+  };
+
+  // Проверка резервного ключа без сохранения: список моделей (throw на невалидном ключе).
+  const testBackupKey = async (index: number) => {
+    const key = form.tokens[index]?.trim();
+    if (!key) return;
+    setBackupTestingIdx(index);
+    setBackupTests((r) => {
+      const n = { ...r };
+      delete n[index];
+      return n;
+    });
+    try {
+      await fetchGeminiModels(key);
+      setBackupTests((r) => ({ ...r, [index]: { success: true, message: "Ключ рабочий" } }));
+    } catch (e) {
+      setBackupTests((r) => ({
+        ...r,
+        [index]: { success: false, message: e instanceof Error ? e.message : "Ключ не прошёл проверку" },
+      }));
+    } finally {
+      setBackupTestingIdx(null);
+    }
   };
 
   const handleTest = () => {
@@ -291,37 +326,61 @@ export default function SettingsPage() {
             <label className="text-sm text-muted-foreground">Резервные ключи (ротация)</label>
             <p className="text-xs text-muted-foreground">
               Если основной ключ упрётся в лимит или ошибку — анализ уйдёт на резервные по порядку.
-              Тест и список моделей используют основной ключ.
+              Каждый ключ можно проверить кнопкой; сохраняются автоматически. Список моделей — по основному ключу.
             </p>
             {form.tokens.length > 0 && (
               <div className="space-y-2 mt-1">
-                {form.tokens.map((t, i) => (
-                  <div key={i} className="flex gap-2 items-center">
-                    <span className="text-xs text-muted-foreground w-5 tabular-nums text-right">{i + 2}.</span>
-                    <input
-                      type="password"
-                      value={t}
-                      onChange={(e) => updateBackupToken(i, e.target.value)}
-                      placeholder="AIza…"
-                      className="flex-1 bg-background border border-input rounded-md px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-ring font-mono placeholder:font-sans placeholder:text-muted-foreground/60"
-                    />
-                    <button
-                      onClick={() => removeBackupToken(i)}
-                      className="px-3 py-2 bg-secondary text-secondary-foreground rounded-md text-sm font-medium border border-border hover:bg-accent hover:text-red-300 transition-colors"
-                      aria-label="Remove key"
-                    >
-                      ✕
-                    </button>
-                  </div>
-                ))}
+                {form.tokens.map((t, i) => {
+                  const res = backupTests[i];
+                  const testing = backupTestingIdx === i;
+                  return (
+                    <div key={i} className="space-y-1">
+                      <div className="flex gap-2 items-center">
+                        <span className="text-xs text-muted-foreground w-5 tabular-nums text-right">{i + 2}.</span>
+                        <input
+                          type="password"
+                          value={t}
+                          onChange={(e) => updateBackupToken(i, e.target.value)}
+                          placeholder="AIza…"
+                          className="flex-1 bg-background border border-input rounded-md px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-ring font-mono placeholder:font-sans placeholder:text-muted-foreground/60"
+                        />
+                        <button
+                          onClick={() => testBackupKey(i)}
+                          disabled={testing || !t.trim()}
+                          className="px-3 py-2 bg-secondary text-secondary-foreground rounded-md text-sm font-medium border border-border hover:bg-accent transition-colors disabled:opacity-50"
+                        >
+                          {testing ? "Testing…" : "Test"}
+                        </button>
+                        <button
+                          onClick={() => removeBackupToken(i)}
+                          className="px-3 py-2 bg-secondary text-secondary-foreground rounded-md text-sm font-medium border border-border hover:bg-accent hover:text-red-300 transition-colors"
+                          aria-label="Remove key"
+                        >
+                          ✕
+                        </button>
+                      </div>
+                      {res && (
+                        <p className={`text-xs pl-7 ${res.success ? "text-green-300" : "text-red-300"}`}>
+                          {res.success ? "✓" : "✗"} {res.message}
+                        </p>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             )}
-            <button
-              onClick={addBackupToken}
-              className="text-xs text-primary hover:underline mt-1"
-            >
-              + Добавить резервный ключ
-            </button>
+            <div className="flex items-center gap-3">
+              <button onClick={addBackupToken} className="text-xs text-primary hover:underline">
+                + Добавить резервный ключ
+              </button>
+              {tokensDirty ? (
+                <span className="text-xs text-amber-300/90">
+                  {tokenSaving ? "Сохранение…" : "Изменено — сохранится через секунду"}
+                </span>
+              ) : saved && form.tokens.length > 0 ? (
+                <span className="text-xs text-green-300/90">Сохранено ✓</span>
+              ) : null}
+            </div>
           </div>
         )}
 
