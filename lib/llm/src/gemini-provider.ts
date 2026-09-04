@@ -11,13 +11,29 @@ function isRateLimitError(err: unknown): boolean {
   return false;
 }
 
+/** Ключ не годится сам по себе (невалидный/заблокированный) — сразу переходим к следующему. */
+function isAuthError(err: unknown): boolean {
+  if (err instanceof Error) {
+    return (
+      err.message.includes("401") ||
+      err.message.includes("403") ||
+      err.message.includes("API_KEY_INVALID") ||
+      err.message.includes("API key not valid") ||
+      err.message.includes("PERMISSION_DENIED")
+    );
+  }
+  return false;
+}
+
 export class GeminiProvider implements LLMProvider {
-  private client: GoogleGenerativeAI;
+  private apiKeys: string[];
   private model: string;
   public usedModel: string = "";
 
-  constructor(apiKey: string, model: string = "gemini-flash-lite-latest") {
-    this.client = new GoogleGenerativeAI(apiKey);
+  /** `apiKey` — один ключ или массив: при лимите/невалидности первого ротация уходит к следующему. */
+  constructor(apiKey: string | string[], model: string = "gemini-flash-lite-latest") {
+    const keys = (Array.isArray(apiKey) ? apiKey : [apiKey]).map((k) => k.trim()).filter(Boolean);
+    this.apiKeys = keys.length > 0 ? keys : [""];
     this.model = model;
   }
 
@@ -26,19 +42,26 @@ export class GeminiProvider implements LLMProvider {
     const modelsToTry = [this.model, ...FALLBACK_MODELS.filter(m => m !== this.model)];
     let lastError: unknown;
 
-    for (const modelId of modelsToTry) {
-      try {
-        const model = this.client.getGenerativeModel({ model: modelId });
-        const result = await model.generateContent([
-          text,
-          { inlineData: { mimeType: "image/jpeg", data: imageBase64 } },
-        ]);
-        this.usedModel = modelId;
-        return this.parseResponse(result.response.text());
-      } catch (err) {
-        lastError = err;
-        if (!isRateLimitError(err)) throw err;
+    // Внешний цикл — ключи (ротация), внутренний — модели (fallback внутри ключа).
+    for (const apiKey of this.apiKeys) {
+      const client = new GoogleGenerativeAI(apiKey);
+
+      for (const modelId of modelsToTry) {
+        try {
+          const model = client.getGenerativeModel({ model: modelId });
+          const result = await model.generateContent([
+            text,
+            { inlineData: { mimeType: "image/jpeg", data: imageBase64 } },
+          ]);
+          this.usedModel = modelId;
+          return this.parseResponse(result.response.text());
+        } catch (err) {
+          lastError = err;
+          if (isAuthError(err)) break; // сам ключ негодный → следующий ключ, модели не спасут
+          if (!isRateLimitError(err)) throw err; // не лимит и не auth → реальная ошибка
+        }
       }
+      // Лимит по всем моделям (или битый ключ) — внешний цикл берёт следующий ключ.
     }
 
     throw lastError;

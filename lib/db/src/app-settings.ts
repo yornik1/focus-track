@@ -7,11 +7,28 @@ import { buildCategoryPromptSection } from "@workspace/categories";
 export interface AppSettings {
   provider: "gemini" | "ollama";
   token: string;
+  /** Резервные Gemini-ключи для ротации: если основной упрётся в лимит/ошибку — запросы уйдут по очереди. Для Ollama пусто. */
+  tokens: string[];
   model: string;
   screenshot_interval: 1 | 2 | 5 | 10;
   idle_threshold: number;
   focused_score_threshold: number;
   prompt: string;
+}
+
+/** Приводит массив ключей к чистому виду: строки, trim, без пустых и дублей. */
+function normalizeTokenList(raw: unknown): string[] {
+  if (!Array.isArray(raw)) return [];
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const item of raw) {
+    const t = item != null ? String(item).trim() : "";
+    if (t && !seen.has(t)) {
+      seen.add(t);
+      out.push(t);
+    }
+  }
+  return out;
 }
 
 const SETTINGS_FILENAME = "focus-app-settings.json";
@@ -59,6 +76,7 @@ export function getDefaultAppSettings(): AppSettings {
   return {
     provider: fromEnv,
     token,
+    tokens: [],
     model,
     screenshot_interval: 2,
     idle_threshold: 60,
@@ -92,6 +110,7 @@ function normalizeStoredSettings(parsed: unknown): AppSettings | null {
     return null;
   }
   const token = o.token != null ? String(o.token) : "";
+  const tokens = provider === "gemini" ? normalizeTokenList(o.tokens) : [];
   const model = o.model != null ? String(o.model) : (provider === "ollama" ? "llava:7b" : DEFAULT_GEMINI_MODEL);
   const si = Number(o.screenshot_interval);
   const screenshot_interval = ALLOWED_INTERVALS.has(si as AppSettings["screenshot_interval"])
@@ -104,6 +123,7 @@ function normalizeStoredSettings(parsed: unknown): AppSettings | null {
   return {
     provider,
     token,
+    tokens,
     model,
     screenshot_interval,
     idle_threshold,
@@ -123,6 +143,7 @@ export function normalizeSettingsPayload(body: unknown): AppSettings {
     throw new Error("provider must be gemini or ollama");
   }
   const token = b.token != null ? String(b.token) : "";
+  const tokens = provider === "gemini" ? normalizeTokenList(b.tokens) : [];
   const model = b.model != null ? String(b.model) : (provider === "ollama" ? "llava:7b" : DEFAULT_GEMINI_MODEL);
   const si = Number(b.screenshot_interval);
   if (!ALLOWED_INTERVALS.has(si as AppSettings["screenshot_interval"])) {
@@ -140,6 +161,7 @@ export function normalizeSettingsPayload(body: unknown): AppSettings {
   return {
     provider,
     token,
+    tokens,
     model,
     screenshot_interval: si as AppSettings["screenshot_interval"],
     idle_threshold: Math.round(idle),

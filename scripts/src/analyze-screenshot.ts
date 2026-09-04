@@ -25,6 +25,10 @@ const GEMINI_API_KEY =
   PROVIDER === "gemini"
     ? trimmedToken || (process.env.GEMINI_API_KEY ?? "")
     : (process.env.GEMINI_API_KEY ?? "");
+// Основной ключ + резервные (ротация): дубли и пустые отбрасываем.
+const GEMINI_API_KEYS = [
+  ...new Set([GEMINI_API_KEY, ...(fromFile ? stored.tokens : [])].map((k) => k.trim()).filter(Boolean)),
+];
 const OLLAMA_HOST =
   PROVIDER === "ollama"
     ? trimmedToken || (process.env.OLLAMA_HOST ?? "http://localhost:11434")
@@ -37,7 +41,7 @@ async function analyzeScreenshot(imagePath: string) {
   const provider =
     PROVIDER === "ollama"
       ? new OllamaProvider(OLLAMA_HOST, MODEL)
-      : new GeminiProvider(GEMINI_API_KEY, MODEL);
+      : new GeminiProvider(GEMINI_API_KEYS, MODEL);
 
   const frequent = await getTopCategoriesFromLogs(5, 30);
   const prompt = buildAnalysisPrompt(BASE_PROMPT, frequent);

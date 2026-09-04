@@ -62,6 +62,8 @@ export interface LogsFilter {
 export interface Settings {
   provider: "gemini" | "ollama";
   token: string;
+  /** Резервные Gemini-ключи для ротации при лимите/ошибке основного. */
+  tokens: string[];
   model: string;
   screenshot_interval: 1 | 2 | 5 | 10;
   idle_threshold: number;
@@ -230,6 +232,7 @@ const MOCK_TODAY: TodayStats = {
 const MOCK_SETTINGS: SettingsResponse = {
   provider: "gemini",
   token: "AIza••••••••••••••••",
+  tokens: [],
   model: "gemini-flash-lite-latest",
   screenshot_interval: 2,
   idle_threshold: 120,
