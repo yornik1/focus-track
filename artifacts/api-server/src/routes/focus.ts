@@ -14,6 +14,7 @@ import {
   nextFocusTarget,
   medianActiveBest,
   FOCUS_FLOOR_MINUTES,
+  focusWorkspaceEnabled,
 } from "@workspace/db";
 import { eq, gte, lte, and, sql, desc } from "drizzle-orm";
 import { testLlmConnection } from "../llm-connection-test";
@@ -206,6 +207,7 @@ router.get("/logs", async (req, res) => {
       category: log.category,
       score: log.focus_score,
       summary: log.summary,
+      ...(focusWorkspaceEnabled() ? { direction_id: log.direction_id } : {}),
     })),
     total: Number(total[0]?.count || 0),
   });
@@ -449,7 +451,7 @@ router.post("/settings/test", async (req, res) => {
   // Если тест успешен — сохраняем provider, token и model в settings
   if (result.success) {
     const current = readAppSettings() ?? getDefaultAppSettings();
-    const modelStr = model != null ? String(model).trim() : (p === "ollama" ? "llava:7b" : "gemini-flash-lite-latest");
+    const modelStr = model != null ? String(model).trim() : (p === "ollama" ? "llava:7b" : "gemini-3.5-flash-lite");
     writeAppSettings({
       ...current,
       provider: p as "gemini" | "ollama",

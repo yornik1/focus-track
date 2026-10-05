@@ -10,7 +10,7 @@ import {
   type SettingsResponse,
 } from "@/api";
 
-const DEFAULT_GEMINI_MODEL = "gemini-flash-lite-latest";
+const DEFAULT_GEMINI_MODEL = "gemini-3.5-flash-lite";
 const GEMINI_KEYS_URL = "https://aistudio.google.com/api-keys";
 
 /** Резервные ключи для отправки на сервер: trim, без пустых и дублей. */
