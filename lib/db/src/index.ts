@@ -1,7 +1,9 @@
-export { db } from "./connection";
+export { db, sqliteConnection } from "./connection";
 export * from "./schema";
 export * from "./app-settings";
 export * from "./category-queries";
+export * from "./focus-workspace";
+export { initializeFocusWorkspaceSchema } from "./focus-workspace-migration";
 export { ALLOWED_CATEGORIES, PRODUCTIVE_CATEGORIES, PRODUCTIVE_DAY_MINUTES, isProductiveCategory, normalizeCategory, buildAnalysisPrompt } from "@workspace/categories";
 export {
   DEEP_WORK_CATEGORIES,

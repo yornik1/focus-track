@@ -34,7 +34,14 @@ function normalizeTokenList(raw: unknown): string[] {
 const SETTINGS_FILENAME = "focus-app-settings.json";
 
 /** Модель Gemini по умолчанию для новых установок и fallback в JSON. */
-export const DEFAULT_GEMINI_MODEL = "gemini-flash-lite-latest";
+export const DEFAULT_GEMINI_MODEL = "gemini-3.5-flash-lite";
+
+function normalizeGeminiModel(model: string): string {
+  const normalized = model.trim();
+  return normalized === "gemini-flash-lite-latest" || normalized === "gemini-2.0-flash-lite"
+    ? DEFAULT_GEMINI_MODEL
+    : normalized || DEFAULT_GEMINI_MODEL;
+}
 
 const ALLOWED_INTERVALS = new Set<AppSettings["screenshot_interval"]>([1, 2, 5, 10]);
 
@@ -111,7 +118,8 @@ function normalizeStoredSettings(parsed: unknown): AppSettings | null {
   }
   const token = o.token != null ? String(o.token) : "";
   const tokens = provider === "gemini" ? normalizeTokenList(o.tokens) : [];
-  const model = o.model != null ? String(o.model) : (provider === "ollama" ? "llava:7b" : DEFAULT_GEMINI_MODEL);
+  const rawModel = o.model != null ? String(o.model) : (provider === "ollama" ? "llava:7b" : DEFAULT_GEMINI_MODEL);
+  const model = provider === "gemini" ? normalizeGeminiModel(rawModel) : rawModel;
   const si = Number(o.screenshot_interval);
   const screenshot_interval = ALLOWED_INTERVALS.has(si as AppSettings["screenshot_interval"])
     ? (si as AppSettings["screenshot_interval"])
@@ -144,7 +152,8 @@ export function normalizeSettingsPayload(body: unknown): AppSettings {
   }
   const token = b.token != null ? String(b.token) : "";
   const tokens = provider === "gemini" ? normalizeTokenList(b.tokens) : [];
-  const model = b.model != null ? String(b.model) : (provider === "ollama" ? "llava:7b" : DEFAULT_GEMINI_MODEL);
+  const rawModel = b.model != null ? String(b.model) : (provider === "ollama" ? "llava:7b" : DEFAULT_GEMINI_MODEL);
+  const model = provider === "gemini" ? normalizeGeminiModel(rawModel) : rawModel;
   const si = Number(b.screenshot_interval);
   if (!ALLOWED_INTERVALS.has(si as AppSettings["screenshot_interval"])) {
     throw new Error("screenshot_interval must be 1, 2, 5, or 10");

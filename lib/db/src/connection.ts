@@ -3,6 +3,7 @@ import Database from "better-sqlite3";
 import path from "path";
 import { fileURLToPath } from "url";
 import * as schema from "./schema";
+import { initializeFocusWorkspaceSchema } from "./focus-workspace-migration";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const projectRoot = process.env.FOCUS_TRACK_ROOT || path.resolve(__dirname, "../../..");
@@ -22,6 +23,8 @@ sqlite.exec(`
     summary TEXT NOT NULL
   )
 `);
+
+initializeFocusWorkspaceSchema(sqlite);
 
 sqlite.exec(`
   CREATE TABLE IF NOT EXISTS habit_definitions (
@@ -191,3 +194,4 @@ insertHabitDefinition.run("walk", "Walk 🚶", 1, null, 3);
 insertHabitDefinition.run("node_learning", "Node learning 🟩", 1, null, 4);
 
 export const db = drizzle(sqlite, { schema });
+export const sqliteConnection: InstanceType<typeof Database> = sqlite;
