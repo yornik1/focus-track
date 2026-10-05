@@ -1,6 +1,6 @@
 import { Ollama } from "ollama";
 import { normalizeCategory } from "@workspace/categories";
-import type { LLMProvider, AnalysisResult } from "./types";
+import { normalizeDirectionId, type LLMProvider, type AnalysisResult } from "./types";
 
 export class OllamaProvider implements LLMProvider {
   private client: Ollama;
@@ -20,23 +20,21 @@ export class OllamaProvider implements LLMProvider {
       stream: false,
     });
 
-    const parsed = this.parseResponse(response.response);
+    const parsed = parseOllamaResponse(response.response);
     return parsed;
   }
 
-  private parseResponse(text: string): AnalysisResult {
-    // Извлечь JSON из markdown code block если есть
-    const jsonMatch = text.match(/```json\s*(\{[\s\S]*?\})\s*```/) || text.match(/(\{[\s\S]*?\})/);
-    if (!jsonMatch) {
-      throw new Error(`Failed to parse Ollama response: ${text}`);
-    }
+}
 
-    const json = JSON.parse(jsonMatch[1]);
-
-    return {
-      score: Math.max(0, Math.min(10, Number(json.score))),
-      category: normalizeCategory(String(json.category)),
-      summary: String(json.summary).slice(0, 200),
-    };
-  }
+export function parseOllamaResponse(text: string): AnalysisResult {
+  // Извлечь JSON из markdown code block если есть.
+  const jsonMatch = text.match(/```json\s*(\{[\s\S]*?\})\s*```/) || text.match(/(\{[\s\S]*\})/);
+  if (!jsonMatch) throw new Error(`Failed to parse Ollama response: ${text}`);
+  const json = JSON.parse(jsonMatch[1]) as Record<string, unknown>;
+  return {
+    score: Math.max(0, Math.min(10, Number(json.score))),
+    category: normalizeCategory(String(json.category)),
+    summary: String(json.summary).slice(0, 200),
+    direction_id: normalizeDirectionId(json.direction_id),
+  };
 }
