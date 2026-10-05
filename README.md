@@ -1,36 +1,36 @@
 # Focus Tracker
 
-Локальный мониторинг продуктивности на macOS. Скриншоты → Gemini → оценка фокуса → дашборд.
+Local productivity monitoring for macOS. Screenshots → Gemini → focus score → dashboard.
 
-## Установка
+## Install
 
-1. Скачайте ZIP на GitHub (**Code → Download ZIP**), распакуйте.
-2. Terminal:
+1. Download the ZIP from GitHub (**Code → Download ZIP**) and unpack it.
+2. In Terminal:
    ```bash
    cd ~/Downloads/focus-track-0.0.9
    make focus-great-again
    ```
-   Нет `make`? → `bash scripts/bootstrap.sh`
+   No `make`? → `bash scripts/bootstrap.sh`
 
-В конце откроются **создание ключа Gemini** и **Settings** в браузере — название проекта и ключа любые, скопируйте ключ и вставьте в API Token (сохранится автоматически). **Test** проверит соединение.
+At the end the **Gemini key creation page** and **Settings** open in the browser. Project and key names can be anything: copy the key and paste it into API Token (it is saved automatically). **Test** checks the connection.
 
-Повторный запуск безопасен — докачает недостающее.
+Running the installer again is safe, it only fetches what is missing.
 
-## Что делает установка
+## What the installer does
 
-- Node + pnpm (через Homebrew **или** в `~/` без прав admin)
-- зависимости, база, захват экрана, фоновые сервисы
-- свободный порт **5001** (или 5002, 5003… если занят)
-- открывает страницу ключа Gemini и `http://localhost:ПОРТ/#settings`
+- Node + pnpm (through Homebrew **or** into `~/` without admin rights)
+- dependencies, database, screen capture, background services
+- a free port, **5001** (or 5002, 5003… if taken)
+- opens the Gemini key page and `http://localhost:PORT/#settings`
 
-macOS может попросить:
-- пароль admin (только Homebrew, можно без него);
-- **Command Line Tools** — не нужны для релизного ZIP (v0.0.9+): `focus-capture` уже собран; Homebrew с нуля не ставится;
-- **Screen Recording** для `mac/bin/focus-capture`.
+macOS may ask for:
+- an admin password (Homebrew only, it works without one);
+- **Command Line Tools**: not needed for the release ZIP (v0.0.9+), `focus-capture` is prebuilt and Homebrew is not installed from scratch;
+- **Screen Recording** permission for `mac/bin/focus-capture`.
 
-**Не используйте `sudo brew`.**
+**Do not use `sudo brew`.**
 
-## После установки
+## After install
 
 ```bash
 make diagnose
@@ -38,22 +38,22 @@ make pause MIN=10
 make backup
 ```
 
-Дашборд: смотрите порт в `.env` (`PORT=...`) или вывод `make diagnose`.
+Dashboard: see the port in `.env` (`PORT=...`) or in the `make diagnose` output.
 
-### Habit-grid
+### Habit grid
 
-Вторая вкладка **Habits** (`/habits`) показывает четыре календарные недели Пн–Вс. Квадратики переключаются вручную; ручное решение всегда приоритетнее автоматического заполнения. Активности можно создавать, редактировать, перетаскивать за grip для изменения приоритета и архивировать компактными кнопками-иконками. Технический ID создаётся автоматически из названия. Архивирование не удаляет сохранённые клетки и audit history.
+The second tab, **Habits** (`/habits`), shows four calendar weeks, Mon–Sun. Cells are toggled by hand, and a manual decision always wins over automatic filling. Activities can be created, edited, dragged by the grip to change priority, and archived with compact icon buttons. The technical ID is generated from the name. Archiving does not delete saved cells or the audit history.
 
-Стартовые активности: Meditation 🧘, English drill 🇬🇧, Walk 🚶 и Node learning 🟩. Последние две помечены как auto: внешний агент может заполнять их через habit API, но не может перезаписать уже установленное вручную состояние.
+Starter activities: Meditation 🧘, English drill 🇬🇧, Walk 🚶 and Node learning 🟩. The last two are marked auto: an external agent may fill them through the habit API but cannot overwrite a state that was set manually.
 
-## Секреты
+## Secrets
 
-| Что | Где |
-|-----|-----|
-| Gemini key | дашборд → Settings → `focus-app-settings.json` |
-| История | `focus.db` |
-| Telegram | `.env` (опционально) |
+| What | Where |
+|------|-------|
+| Gemini key | dashboard → Settings → `focus-app-settings.json` |
+| History | `focus.db` |
+| Telegram | `.env` (optional) |
 
-## Telegram (опционально)
+## Telegram (optional)
 
-[@BotFather](https://t.me/botfather) → `TG_BOT_TOKEN`, [@userinfobot](https://t.me/userinfobot) → `TG_CHAT_ID` в `.env`.
+[@BotFather](https://t.me/botfather) → `TG_BOT_TOKEN`, [@userinfobot](https://t.me/userinfobot) → `TG_CHAT_ID` in `.env`.
