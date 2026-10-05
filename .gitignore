@@ -195,3 +195,11 @@ mac/Focus Capture.app/
 
 # graphify skill output (generated knowledge graph)
 graphify-out/
+
+# local agent / IDE config
+.cursor/
+AGENTS.md
+CLAUDE.md
+PLAN.md
+.replit
+.replitignore
