@@ -203,3 +203,31 @@ CLAUDE.md
 PLAN.md
 .replit
 .replitignore
+
+# secrets and credentials
+!.env.*.example
+*.pem
+*.key
+*.p12
+*.pfx
+id_rsa*
+id_ed25519*
+credentials*.json
+secrets.json
+secrets.y*ml
+*.session
+*.session-journal
+# local data
+*.sqlite
+*.sqlite3
+*.db-journal
+# OS and local agent/IDE state
+.omx*
+.codex/
+.claude/
+.agents/
+.idea/
+# project-specific
+screenshots/
+captures/
+backups/
