@@ -10,6 +10,7 @@
     "import:garmin": "tsx ./src/import-garmin.ts",
     "import:anki": "tsx ./src/import-anki.ts",
     "import:external": "tsx ./src/import-garmin.ts && tsx ./src/import-anki.ts",
+    "goal-report": "tsx ./src/goal-report.ts",
     "test": "node --import tsx --test src/lib/*.test.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },

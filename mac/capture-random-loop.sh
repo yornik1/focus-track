@@ -6,10 +6,14 @@ set -euo pipefail
 _here="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
 _root="$(cd "${_here}/.." && pwd)"
 _capture="${_here}/capture-if-active.sh"
+_goal_report="${_here}/goal-report-send.sh"
 _settings="${_root}/focus-app-settings.json"
 
 while true; do
   "${_capture}" || true
+
+  # Сообщения по цели (вопрос дня, итог недели); без focus-goal.json скрипт сразу выходит
+  "${_goal_report}" || true
 
   # Читаем screenshot_interval из JSON (минуты), fallback на env или 2 мин
   interval_min=2
