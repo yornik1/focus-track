@@ -2,7 +2,7 @@
  * Сообщения по цели: решение «что слать сейчас» и тексты. Чистые функции без базы, файлов и сети —
  * числа собирает `scripts/src/goal-report.ts`, отправляет bash.
  */
-import { addDays, isDeepWorkCategory, mondayOf } from "@workspace/categories";
+import { addDays, isDeepWorkCategory, mondayOf, type StreakEvent, type StreakState } from "@workspace/categories";
 import { type DailyQuestion, pickByDate } from "./daily-question";
 
 /** «Сейчас» глазами отчёта: местная дата и час по Киеву. */
@@ -102,6 +102,7 @@ export interface DailyFacts {
 export type ReportDecision =
   | { kind: "none" }
   | { kind: "silent"; marker: string }
+  | { kind: "streak"; marker: string }
   | { kind: "weekly"; marker: string }
   | { kind: "review"; marker: string }
   | { kind: "daily"; marker: string; emptyDay: boolean };
@@ -111,16 +112,24 @@ const MORNING_HOUR = 9;
 /** С этого часа до утра сообщения не шлём — ни дневное, ни итог недели, ни проверку плана. */
 const QUIET_HOUR = 22;
 
-/** За один запуск — одно сообщение; порядок: итог недели, проверка плана, день. */
+/** За один запуск — одно сообщение; порядок: событие серии, итог недели, проверка плана, день. */
 export function decideReport(input: {
   clock: ReportClock;
   settings: ReportSettings;
   daily: DailyFacts;
+  /** Что случилось с серией вчера; без блока `streak` в настройках — не задано. */
+  streakEvent?: StreakEvent;
   existingMarkers: ReadonlySet<string>;
 }): ReportDecision {
   const { clock, settings, daily, existingMarkers } = input;
 
   if (clock.hour >= MORNING_HOUR && clock.hour < QUIET_HOUR) {
+    // Событие серии — про вчерашний день, поэтому идёт первым и один раз за сегодня.
+    if (input.streakEvent) {
+      const streakMarker = `goal-streak-${clock.dateKey}`;
+      if (!existingMarkers.has(streakMarker)) return { kind: "streak", marker: streakMarker };
+    }
+
     const weeklyMarker = `goal-weekly-${lastFinishedWeek(clock.dateKey).startKey}`;
     if (!existingMarkers.has(weeklyMarker)) return { kind: "weekly", marker: weeklyMarker };
 
@@ -159,12 +168,18 @@ export function dailyText(input: {
   firstAction: string;
   question: DailyQuestion | null;
   streakLine?: string;
+  /** Текущая серия; при серии больше нуля в круг начал добавляется «Серия N ждёт». */
+  streak?: number;
 }): string {
   const { question } = input;
   const lines: string[] = [];
 
   if (input.emptyDay) {
-    lines.push(pickByDate(EMPTY_DAY_OPENINGS, input.dateKey) ?? EMPTY_DAY_OPENINGS[0]);
+    const openings =
+      input.streak && input.streak > 0
+        ? [...EMPTY_DAY_OPENINGS, `Серия ${input.streak} ждёт. 10 минут английского вслух.`]
+        : EMPTY_DAY_OPENINGS;
+    lines.push(pickByDate(openings, input.dateKey) ?? openings[0]);
   } else if (question) {
     lines.push("Вопрос дня для английского вслух.");
   } else {
@@ -182,6 +197,30 @@ export function dailyText(input: {
 
   if (input.streakLine) lines.push(input.streakLine);
   return lines.join("\n");
+}
+
+/** Строка серии для дневного сообщения и итога недели. */
+export function streakLine(state: Pick<StreakState, "streak" | "freezes">, cap: number): string {
+  return `Серия ${state.streak} · заморозок ${state.freezes} из ${cap}`;
+}
+
+/**
+ * Сообщение утром после пустого дня; `state` — серия по дням до вчера включительно.
+ * Оговорка в тексте нужна, потому что часть автоотметок записывается задним числом.
+ */
+export function streakEventText(state: StreakState): string | null {
+  if (state.lastEvent === "freeze_used") {
+    return `По отметкам вчера пусто: сработала заморозка, серия ${state.streak} цела, осталось ${state.freezes}. Придёт отметка позже — пересчитается само.`;
+  }
+  if (state.lastEvent === "streak_broken") {
+    return `По отметкам вчера пусто, заморозок нет: серия ${state.streakBeforeLastDay} прервана. Придёт отметка за вчера — серия вернётся.`;
+  }
+  return null;
+}
+
+/** Дни серии строкой для пробного запуска: «#» — непустой, «.» — пустой. */
+export function renderStreakDays(days: readonly boolean[]): string {
+  return days.map((nonEmpty) => (nonEmpty ? "#" : ".")).join("");
 }
 
 /** Числа итога недели; часы — среднее на день: будни ÷ 5, выходные ÷ 2. */

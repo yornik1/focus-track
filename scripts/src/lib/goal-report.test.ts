@@ -15,7 +15,10 @@ import {
   kievClock,
   kievMidnight,
   lastFinishedWeek,
+  renderStreakDays,
   reviewText,
+  streakEventText,
+  streakLine,
   topNonWork,
   weeklyText,
 } from "./goal-report";
@@ -134,12 +137,18 @@ function weeklyMarker(dateKey: string): string {
 function decide(
   dateKey: string,
   hour: number,
-  overrides: { settings?: Partial<ReportSettings>; daily?: Partial<DailyFacts>; markers?: string[] } = {},
+  overrides: {
+    settings?: Partial<ReportSettings>;
+    daily?: Partial<DailyFacts>;
+    markers?: string[];
+    streakEvent?: "freeze_used" | "streak_broken" | null;
+  } = {},
 ) {
   return decideReport({
     clock: clockAt(dateKey, hour),
     settings: { ...SETTINGS, ...overrides.settings },
     daily: { ...READY, ...overrides.daily },
+    streakEvent: overrides.streakEvent,
     // По умолчанию итог прошлой недели уже отправлен — иначе он перекрывал бы дневное сообщение.
     existingMarkers: new Set(overrides.markers ?? [weeklyMarker(dateKey)]),
   });
@@ -492,4 +501,72 @@ test("topNonWork: без работы и communication, по убыванию, �
   assert.equal(topNonWork(minutes, 10).length, 3);
   assert.deepEqual(topNonWork({ code: 600, communication: 30 }), []);
   assert.deepEqual(topNonWork({}), []);
+});
+
+// ---------- серия с заморозками (шаг 4) ----------
+
+test("decideReport: событие серии уходит первым, после 09:00 и один раз в день", () => {
+  const event = { streakEvent: "freeze_used" as const };
+  const streak = { kind: "streak", marker: "goal-streak-2026-10-07" };
+  // Раньше итога недели и раньше дневного сообщения.
+  assert.deepEqual(decide("2026-10-07", 10, { ...event, markers: [] }), streak);
+  assert.deepEqual(decide("2026-10-07", 15, event), streak);
+  assert.deepEqual(decide("2026-10-07", 15, { streakEvent: "streak_broken" }), streak);
+  // До 09:00 и с 22:00 — молчим.
+  assert.deepEqual(decide("2026-10-07", 8, event), NONE);
+  assert.deepEqual(decide("2026-10-07", 22, event), NONE);
+  // Метка события стоит — дальше обычный порядок.
+  const sent = [weeklyMarker("2026-10-07"), "goal-streak-2026-10-07"];
+  assert.deepEqual(decide("2026-10-07", 15, { ...event, markers: sent }), {
+    kind: "daily",
+    marker: "goal-daily-2026-10-07",
+    emptyDay: true,
+  });
+  // События нет — как раньше.
+  assert.deepEqual(decide("2026-10-07", 10, { streakEvent: null, markers: [] }), {
+    kind: "weekly",
+    marker: "goal-weekly-2026-09-28",
+  });
+});
+
+test("streakLine: серия и заморозки одной строкой", () => {
+  assert.equal(streakLine({ streak: 6, freezes: 2 }, 2), "Серия 6 · заморозок 2 из 2");
+  assert.equal(streakLine({ streak: 0, freezes: 1 }, 2), "Серия 0 · заморозок 1 из 2");
+});
+
+test("streakEventText: заморозка, обрыв серии и отсутствие события", () => {
+  assert.equal(
+    streakEventText({ streak: 6, freezes: 1, lastEvent: "freeze_used", streakBeforeLastDay: 6 }),
+    "По отметкам вчера пусто: сработала заморозка, серия 6 цела, осталось 1. Придёт отметка позже — пересчитается само.",
+  );
+  assert.equal(
+    streakEventText({ streak: 0, freezes: 0, lastEvent: "streak_broken", streakBeforeLastDay: 6 }),
+    "По отметкам вчера пусто, заморозок нет: серия 6 прервана. Придёт отметка за вчера — серия вернётся.",
+  );
+  assert.equal(streakEventText({ streak: 3, freezes: 1, lastEvent: null, streakBeforeLastDay: 2 }), null);
+});
+
+test("dailyText: начало «Серия N ждёт» есть в круге только при серии больше нуля", () => {
+  const base = { emptyDay: true, firstAction: "английский вслух с ИИ", question: null };
+  const openings = (streak: number | undefined): Set<string> =>
+    new Set(
+      Array.from({ length: 12 }, (_, i) => dailyText({ ...base, dateKey: addDays("2026-10-06", i), streak }).split("\n")[0]),
+    );
+  const waiting = "Серия 4 ждёт. 10 минут английского вслух.";
+  assert.equal(openings(4).size, 4);
+  assert.equal(openings(4).has(waiting), true);
+  // Серии нет или она нулевая — круг из трёх прежних начал.
+  assert.equal(openings(0).size, 3);
+  assert.equal(openings(undefined).size, 3);
+  assert.equal([...openings(0)].some((line) => line.startsWith("Серия")), false);
+  // В непустой день начало от серии не зависит.
+  assert.equal(
+    dailyText({ ...base, emptyDay: false, dateKey: "2026-10-06", streak: 4 }).split("\n")[0],
+    "Английский вслух сегодня ещё не отмечен. Хватит 10 минут: английский вслух с ИИ.",
+  );
+});
+
+test("renderStreakDays: # — непустой день, . — пустой", () => {
+  assert.equal(renderStreakDays([true, true, false, true]), "##.#");
+  assert.equal(renderStreakDays([]), "");
 });

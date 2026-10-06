@@ -22,7 +22,7 @@ import {
   speakingTopicsPath,
   sqliteConnection,
 } from "@workspace/db";
-import { addDays, isDeepWorkCategory } from "@workspace/categories";
+import { type StreakState, addDays, computeStreak, isDeepWorkCategory, streakDays } from "@workspace/categories";
 import { generateGeminiText } from "@workspace/llm";
 import { type DailyQuestion, parseQuestionResponse, parseTopicsFile, resolveDailyQuestion } from "./lib/daily-question";
 import {
@@ -39,7 +39,10 @@ import {
   kievClock,
   kievMidnight,
   lastFinishedWeek,
+  renderStreakDays,
   reviewText,
+  streakEventText,
+  streakLine,
   topNonWork,
   weeklyText,
 } from "./lib/goal-report";
@@ -237,6 +240,21 @@ async function main(): Promise<void> {
     questionHabitDoneToday: questionId !== undefined && doneDates([questionId], today, today, today).length > 0,
   };
 
+  // Серия проигрывается из отметок от дня старта; без блока `streak` в настройках её нет.
+  let streakNow: StreakState | undefined; // с сегодняшним днём, если он уже непустой — для строки «Серия…»
+  let streakYesterday: StreakState | undefined; // по дням до вчера — для утреннего события
+  let streakDaysText: string | undefined;
+  if (settings.streak) {
+    const rules = settings.streak;
+    const nonEmpty = new Set(doneDates(stepIds, rules.start_date, today, today));
+    const untilYesterday = new Set([...nonEmpty].filter((date) => date !== today));
+    streakYesterday = computeStreak(streakDays(rules.start_date, today, untilYesterday), rules);
+    const days = streakDays(rules.start_date, today, nonEmpty);
+    streakNow = computeStreak(days, rules);
+    streakDaysText = renderStreakDays(days);
+  }
+  const streakText = streakNow && settings.streak ? streakLine(streakNow, settings.streak.cap) : undefined;
+
   // Метки ставит bash-отправка; здесь они только читаются.
   const markersDir = path.join(path.dirname(goalSettingsPath()), "data", "markers");
   const existingMarkers = new Set(existsSync(markersDir) ? readdirSync(markersDir) : []);
@@ -251,6 +269,7 @@ async function main(): Promise<void> {
       hasQuestionHabit: questionId !== undefined,
     },
     daily,
+    streakEvent: streakYesterday?.lastEvent,
     existingMarkers,
   });
 
@@ -262,9 +281,14 @@ async function main(): Promise<void> {
     recent,
     markers: [...existingMarkers].sort(),
   };
+  if (streakNow && streakYesterday) {
+    numbers.streak = { days: streakDaysText, ...streakNow, eventYesterday: streakYesterday.lastEvent };
+  }
 
   let text: string | undefined;
-  if (decision.kind === "weekly") {
+  if (decision.kind === "streak") {
+    text = (streakYesterday && streakEventText(streakYesterday)) ?? undefined;
+  } else if (decision.kind === "weekly") {
     const { week, shots } = collectWeek({
       ...lastFinishedWeek(today),
       stepIds,
@@ -275,7 +299,7 @@ async function main(): Promise<void> {
       threshold: app.focused_score_threshold,
     });
     numbers.week = { ...week, shots, interval: app.screenshot_interval, threshold: app.focused_score_threshold };
-    text = weeklyText(week);
+    text = weeklyText(week, streakText);
   } else if (decision.kind === "review") {
     // 14 дней, которые кончаются вчера.
     const fromKey = addDays(today, -14);
@@ -292,7 +316,14 @@ async function main(): Promise<void> {
     // Gemini вызывается только здесь — когда уже решено слать дневное сообщение.
     const question = await questionOfDay({ dateKey: today, now, markersDir, noLlm, app });
     numbers.question = question;
-    text = dailyText({ dateKey: today, emptyDay: decision.emptyDay, firstAction: settings.first_action, question });
+    text = dailyText({
+      dateKey: today,
+      emptyDay: decision.emptyDay,
+      firstAction: settings.first_action,
+      question,
+      streakLine: streakText,
+      streak: streakNow?.streak,
+    });
   }
 
   if (decision.kind !== "none") {

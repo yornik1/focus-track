@@ -1,5 +1,6 @@
 export * from "./focus";
 export * from "./weekly";
+export * from "./streak";
 
 /** Категории с цветами в календаре — единый whitelist для LLM и UI. */
 export const ALLOWED_CATEGORIES = [
