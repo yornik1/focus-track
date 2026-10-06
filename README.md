@@ -53,7 +53,25 @@ Starter activities: Meditation 🧘, English drill 🇬🇧, Walk 🚶 and Node 
 | Gemini key | dashboard → Settings → `focus-app-settings.json` |
 | History | `focus.db` |
 | Telegram | `.env` (optional) |
+| Goal messages | `focus-goal.json`, `speaking-topics.txt` (optional, local) |
 
 ## Telegram (optional)
 
 [@BotFather](https://t.me/botfather) → `TG_BOT_TOKEN`, [@userinfobot](https://t.me/userinfobot) → `TG_CHAT_ID` in `.env`.
+
+### Goal messages (optional)
+
+With Telegram configured, put a `focus-goal.json` next to `focus.db` to get one message a day: a question to discuss aloud in English, sent after 14:00 when you are not busy and the habit is not ticked yet. You also get a weekly summary and a streak of non-empty days with freezes. Without the file nothing is sent.
+
+```json
+{
+  "first_action": "speak English with an AI",
+  "step_habit_ids": ["walk", "talk_to_llm_eng"],
+  "question_habit_id": "talk_to_llm_eng",
+  "nudge_hour": 14,
+  "min_screenshots": 5,
+  "streak": { "start_date": "2026-10-06", "earn_every": 5, "cap": 2, "start_freezes": 1 }
+}
+```
+
+`step_habit_ids` are the habits that make a day count. Dry run without sending: `pnpm --silent --filter @workspace/scripts run goal-report --dry-run --no-llm`.
