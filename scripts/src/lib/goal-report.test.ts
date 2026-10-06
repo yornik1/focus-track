@@ -10,6 +10,7 @@ import {
   type WeekFacts,
   dailyText,
   decideReport,
+  partnerInstruction,
   isBusy,
   isWeekendKey,
   kievClock,
@@ -282,11 +283,23 @@ const EMPTY_DAY_OPENINGS = [
 ];
 
 const QUESTION: DailyQuestion = {
-  question: "Should a developer write the test before the code even for a tiny change?",
+  situation: "Your team ships a feature tomorrow. You notice a rare bug that nobody else has seen.",
+  question: "Do you delay the release or ship it and fix the bug later?",
+  opener: "Honestly, I would … because …",
   why: "правка теста для чтения настроек",
-  followups: ["When does this rule waste time?", "What would you tell a junior developer?"],
+  followups: ["Who should make this decision?", "What if the bug costs you a customer?"],
   source: "llm",
 };
+
+/** Строки вопроса в сообщении за вторник 6 октября, в порядке появления. */
+const QUESTION_LINES = [
+  "Your team ships a feature tomorrow. You notice a rare bug that nobody else has seen.",
+  "Do you delay the release or ship it and fix the bug later?",
+  "Начни так: Honestly, I would … because …",
+  `Скажи ИИ: ${partnerInstruction("2026-10-06")}`,
+  "С чем связан: правка теста для чтения настроек",
+  "Дальше можно спросить: 1) Who should make this decision? 2) What if the bug costs you a customer?",
+];
 
 const FIRST_ACTION = "английский вслух с ИИ";
 
@@ -312,23 +325,14 @@ test("dailyText: пустой день с вопросом", () => {
   const text = dailyText({ dateKey: TUESDAY, emptyDay: true, firstAction: FIRST_ACTION, question: QUESTION });
   const [opening, ...rest] = text.split("\n");
   assert.ok(EMPTY_DAY_OPENINGS.includes(opening));
-  assert.deepEqual(rest, [
-    "Should a developer write the test before the code even for a tiny change?",
-    "С чем связан: правка теста для чтения настроек",
-    "Дальше можно спросить: 1) When does this rule waste time? 2) What would you tell a junior developer?",
-  ]);
+  assert.deepEqual(rest, QUESTION_LINES);
   assertWellFormed(text);
 });
 
 test("dailyText: непустой день с вопросом", () => {
   assert.equal(
     dailyText({ dateKey: TUESDAY, emptyDay: false, firstAction: FIRST_ACTION, question: QUESTION }),
-    [
-      "Вопрос дня для английского вслух.",
-      "Should a developer write the test before the code even for a tiny change?",
-      "С чем связан: правка теста для чтения настроек",
-      "Дальше можно спросить: 1) When does this rule waste time? 2) What would you tell a junior developer?",
-    ].join("\n"),
+    ["Вопрос дня для английского вслух.", ...QUESTION_LINES].join("\n"),
   );
 });
 
@@ -340,25 +344,27 @@ test("dailyText: непустой день без вопроса называе�
 });
 
 test("dailyText: вопрос без пояснения или без продолжений остаётся цельным", () => {
-  const head = ["Вопрос дня для английского вслух.", QUESTION.question];
+  const head = ["Вопрос дня для английского вслух.", ...QUESTION_LINES.slice(0, 4)];
   const text = (question: DailyQuestion) => dailyText({ dateKey: TUESDAY, emptyDay: false, firstAction: FIRST_ACTION, question });
 
   const noWhy = text({ ...QUESTION, why: "" });
-  assert.deepEqual(noWhy.split("\n"), [
-    ...head,
-    "Дальше можно спросить: 1) When does this rule waste time? 2) What would you tell a junior developer?",
-  ]);
+  assert.deepEqual(noWhy.split("\n"), [...head, QUESTION_LINES[5]]);
 
   const noFollowups = text({ ...QUESTION, followups: [] });
-  assert.deepEqual(noFollowups.split("\n"), [...head, "С чем связан: правка теста для чтения настроек"]);
+  assert.deepEqual(noFollowups.split("\n"), [...head, QUESTION_LINES[4]]);
 
   // Один вопрос для продолжения строку «1) … 2) …» не собирает.
-  const oneFollowup = text({ ...QUESTION, followups: ["When does this rule waste time?"] });
-  assert.deepEqual(oneFollowup.split("\n"), [...head, "С чем связан: правка теста для чтения настроек"]);
+  const oneFollowup = text({ ...QUESTION, followups: ["Who should make this decision?"] });
+  assert.deepEqual(oneFollowup.split("\n"), [...head, QUESTION_LINES[4]]);
 
-  // Запасной вопрос из файла: ни пояснения, ни продолжений.
-  const bare = text({ question: QUESTION.question, why: "", followups: [], source: "fallback" });
-  assert.deepEqual(bare.split("\n"), head);
+  // Запасной вопрос из файла: ни ситуации, ни своей первой фразы — но начать всё равно есть с чего.
+  const bare = text({ situation: "", question: QUESTION.question, opener: "", why: "", followups: [], source: "fallback" });
+  assert.deepEqual(bare.split("\n"), [
+    "Вопрос дня для английского вслух.",
+    QUESTION.question,
+    "Начни так: Honestly, I think … because …",
+    QUESTION_LINES[3],
+  ]);
 
   for (const value of [noWhy, noFollowups, oneFollowup, bare]) assertWellFormed(value);
 });
@@ -588,4 +594,16 @@ test("resolveHabits: неактивная привычка из списка п�
 test("resolveHabits: привычка с вопросом неактивна или не задана → questionId нет", () => {
   assert.deepEqual(resolveHabits(["walk"], "talk", new Set(["walk"])), { stepIds: ["walk"], questionId: undefined });
   assert.deepEqual(resolveHabits(["walk"], undefined, new Set(["walk"])), { stepIds: ["walk"], questionId: undefined });
+});
+
+// ---------- как начать разговор ----------
+
+test("partnerInstruction: готовая фраза для ИИ, роль собеседника меняется по дням", () => {
+  const days = Array.from({ length: 6 }, (_, i) => partnerInstruction(addDays("2026-10-06", i)));
+  for (const line of days) {
+    assert.match(line, /^Let's discuss this in English for 10 minutes\. .+ Ask me one question at a time and correct my mistakes briefly\.$/);
+  }
+  assert.equal(new Set(days).size, 3);
+  assert.notEqual(days[0], days[1]);
+  assert.equal(days[0], days[3]);
 });

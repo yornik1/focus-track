@@ -177,6 +177,22 @@ const EMPTY_DAY_OPENINGS: readonly string[] = [
   "Можно начать с малого: 10 минут английского вслух.",
 ];
 
+/** Первая фраза, если ИИ свою не дал или вопрос запасной. */
+const DEFAULT_OPENER = "Honestly, I think … because …";
+
+/** Роль собеседника меняется по дням, чтобы разговор не шёл каждый раз по одной колее. */
+const PARTNER_ROLES: readonly string[] = [
+  "Disagree with me.",
+  "Play a sceptical friend.",
+  "Interview me like a curious journalist.",
+];
+
+/** Готовая фраза для ИИ-собеседника: с неё разговор начинается без раздумий. */
+export function partnerInstruction(dateKey: string): string {
+  const role = pickByDate(PARTNER_ROLES, dateKey, "role") ?? PARTNER_ROLES[0];
+  return `Let's discuss this in English for 10 minutes. ${role} Ask me one question at a time and correct my mistakes briefly.`;
+}
+
 export function dailyText(input: {
   dateKey: string;
   emptyDay: boolean;
@@ -202,8 +218,11 @@ export function dailyText(input: {
   }
 
   if (question) {
+    // У запасного вопроса из файла нет ни ситуации, ни своей первой фразы, ни пояснения, ни продолжений.
+    if (question.situation) lines.push(question.situation);
     lines.push(question.question);
-    // У запасного вопроса из файла нет ни пояснения, ни продолжений.
+    lines.push(`Начни так: ${question.opener || DEFAULT_OPENER}`);
+    lines.push(`Скажи ИИ: ${partnerInstruction(input.dateKey)}`);
     if (question.why) lines.push(`С чем связан: ${question.why}`);
     if (question.followups.length >= 2) {
       lines.push(`Дальше можно спросить: 1) ${question.followups[0]} 2) ${question.followups[1]}`);
