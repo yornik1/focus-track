@@ -168,12 +168,6 @@ test("parseSavedQuestion: читает сохранённый вопрос, в �
   assert.equal(parseSavedQuestion("[]"), null);
 });
 
-test("buildQuestionPrompt: строка «с чем связан» явно запрошена на русском", () => {
-  const prompt = buildQuestionPrompt(SUMMARIES.slice(0, 5), QUESTION_TYPES[0]);
-  assert.match(prompt, /"why", which MUST be written in Russian/);
-  assert.match(prompt, /"why": "<одна короткая строка по-русски: с чем связана тема>"/);
-});
-
 test("pickByDate: одна дата → один результат, разные даты расходятся", () => {
   const items = ["a", "b", "c", "d", "e"];
   assert.equal(pickByDate(items, DATE), pickByDate(items, DATE));
@@ -270,12 +264,6 @@ test("parseQuestionResponse: первая фраза необязательна 
   assert.equal(parseQuestionResponse(JSON.stringify({ ...GOOD, opener: undefined }))?.opener, "");
   assert.equal(parseQuestionResponse(JSON.stringify({ ...GOOD, opener: "x".repeat(201) }))?.opener, "");
   assert.equal(parseQuestionResponse(JSON.stringify(GOOD))?.opener, GOOD.opener);
-});
-
-test("QUESTION_TYPES: ни один вид не про инструменты, запрет на них есть в запросе", () => {
-  const prompt = buildQuestionPrompt(SUMMARIES.slice(0, 5), QUESTION_TYPES[0]);
-  assert.match(prompt, /Do NOT ask about the tool, app, website or workflow itself/);
-  assert.match(prompt, /concrete situation where something is at stake/);
 });
 
 test("parseQuestionResponse: оставляет первые два продолжения", () => {

@@ -30,18 +30,18 @@ const epochOf = (iso: string): number => Date.parse(iso) / 1000;
 test("kievClock: дата и час по Киеву, даже когда дата в UTC другая", () => {
   // 22:30 UTC 5 октября — это уже 01:30 вторника 6 октября в Киеве (летнее время, UTC+3).
   const night = epochOf("2026-10-05T22:30:00Z");
-  assert.deepEqual(kievClock(night), { epoch: night, dateKey: "2026-10-06", hour: 1, weekdayIndex: 1 });
+  assert.deepEqual(kievClock(night), { dateKey: "2026-10-06", hour: 1 });
 
   const saturday = epochOf("2026-10-03T11:05:00Z");
-  assert.deepEqual(kievClock(saturday), { epoch: saturday, dateKey: "2026-10-03", hour: 14, weekdayIndex: 5 });
+  assert.deepEqual(kievClock(saturday), { dateKey: "2026-10-03", hour: 14 });
 
   const sunday = epochOf("2026-10-04T09:00:00Z");
-  assert.deepEqual(kievClock(sunday), { epoch: sunday, dateKey: "2026-10-04", hour: 12, weekdayIndex: 6 });
+  assert.deepEqual(kievClock(sunday), { dateKey: "2026-10-04", hour: 12 });
 });
 
 test("kievClock: зимой UTC+2, полночь — это час 0, а не 24", () => {
   const newYear = epochOf("2026-12-31T22:30:00Z");
-  assert.deepEqual(kievClock(newYear), { epoch: newYear, dateKey: "2027-01-01", hour: 0, weekdayIndex: 4 });
+  assert.deepEqual(kievClock(newYear), { dateKey: "2027-01-01", hour: 0 });
 });
 
 test("kievMidnight: начало местных суток, в том числе в дни перевода часов", () => {
@@ -128,7 +128,7 @@ const READY: DailyFacts = { screenshotsToday: 12, busy: false, stepDoneToday: fa
 
 /** Часы для решения: дата и час задаются прямо, без пересчёта из эпохи. */
 function clockAt(dateKey: string, hour: number): ReportClock {
-  return { epoch: 0, dateKey, hour, weekdayIndex: (new Date(`${dateKey}T00:00:00Z`).getUTCDay() + 6) % 7 };
+  return { dateKey, hour };
 }
 
 function weeklyMarker(dateKey: string): string {

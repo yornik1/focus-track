@@ -7,10 +7,8 @@ import { type DailyQuestion, pickByDate } from "./daily-question";
 
 /** «Сейчас» глазами отчёта: местная дата и час по Киеву. */
 export interface ReportClock {
-  epoch: number; // unix-секунды
   dateKey: string; // местная дата YYYY-MM-DD
   hour: number; // 0–23
-  weekdayIndex: number; // 0 = пн … 6 = вс
 }
 
 const KIEV_PARTS = new Intl.DateTimeFormat("en-US", {
@@ -22,19 +20,12 @@ const KIEV_PARTS = new Intl.DateTimeFormat("en-US", {
   hour: "2-digit",
 });
 
-/** День недели по ключу даты: 0 = пн … 6 = вс. */
-function weekdayIndexOf(dateKey: string): number {
-  const [year, month, day] = dateKey.split("-").map(Number);
-  return (new Date(Date.UTC(year, month - 1, day)).getUTCDay() + 6) % 7;
-}
-
 export function kievClock(epochSeconds: number): ReportClock {
   const parts: Record<string, string> = {};
   for (const part of KIEV_PARTS.formatToParts(new Date(epochSeconds * 1000))) {
     parts[part.type] = part.value;
   }
-  const dateKey = `${parts.year}-${parts.month}-${parts.day}`;
-  return { epoch: epochSeconds, dateKey, hour: Number(parts.hour), weekdayIndex: weekdayIndexOf(dateKey) };
+  return { dateKey: `${parts.year}-${parts.month}-${parts.day}`, hour: Number(parts.hour) };
 }
 
 /** Unix-секунды местной (киевской) полуночи, с которой начинается день `dateKey`. */
@@ -52,7 +43,9 @@ export function lastFinishedWeek(dateKey: string): { startKey: string; endKey: s
 }
 
 export function isWeekendKey(dateKey: string): boolean {
-  return weekdayIndexOf(dateKey) >= 5;
+  const [year, month, day] = dateKey.split("-").map(Number);
+  const weekday = new Date(Date.UTC(year, month - 1, day)).getUTCDay(); // 0 = вс, 6 = сб
+  return weekday === 0 || weekday === 6;
 }
 
 export interface RecentShot {

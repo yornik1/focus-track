@@ -40,7 +40,7 @@ function hashString(text: string): number {
     hash ^= text.charCodeAt(i);
     hash = Math.imul(hash, 0x01000193);
   }
-  // Без перемешивания соседние даты давали бы соседние элементы списка.
+  // Перемешивание разводит похожие строки (соседние даты в ключе) далеко друг от друга.
   hash ^= hash >>> 16;
   hash = Math.imul(hash, 0x85ebca6b);
   hash ^= hash >>> 13;
