@@ -5,7 +5,7 @@ import { normalizeDirectionId, type LLMProvider, type AnalysisResult } from "./t
 export const DEFAULT_GEMINI_MODEL = "gemini-3.5-flash-lite";
 
 const RETIRED_GEMINI_MODELS = new Set(["gemini-flash-lite-latest", "gemini-2.0-flash-lite"]);
-const FALLBACK_MODELS = [DEFAULT_GEMINI_MODEL, "gemini-3.6-flash", "gemini-3.8-flash"];
+export const FALLBACK_MODELS = [DEFAULT_GEMINI_MODEL, "gemini-3.6-flash", "gemini-3.8-flash"];
 
 export function normalizeGeminiModelId(model: string): string {
   const normalized = model.trim();
@@ -23,7 +23,7 @@ export function isRetryableGeminiError(err: unknown): boolean {
 }
 
 /** Ключ не годится сам по себе (невалидный/заблокированный) — сразу переходим к следующему. */
-function isAuthError(err: unknown): boolean {
+export function isAuthError(err: unknown): boolean {
   if (err instanceof Error) {
     return (
       err.message.includes("401") ||

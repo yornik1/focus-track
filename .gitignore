@@ -185,6 +185,8 @@ Thumbs.db
 *.db-shm
 *.db-wal
 focus-app-settings.json
+focus-goal.json
+speaking-topics.txt
 data/
 # focus-capture — в репо (universal); пересборка: make build-capture
 # Focus Capture.app генерируется из mac/bin/focus-capture (ensure_capture_app_bundle)

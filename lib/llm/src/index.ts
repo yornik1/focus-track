@@ -6,4 +6,5 @@ export {
   normalizeGeminiModelId,
   parseGeminiResponse,
 } from "./gemini-provider";
+export { generateGeminiText } from "./gemini-text";
 export { OllamaProvider, parseOllamaResponse } from "./ollama-provider";

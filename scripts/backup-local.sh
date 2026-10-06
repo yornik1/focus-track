@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Бэкап локальных данных: settings, БД, .env (если есть).
+# Бэкап локальных данных: settings, настройки цели, запасные вопросы, БД, .env (если есть).
 
 set -euo pipefail
 
@@ -12,7 +12,7 @@ DEST="${BACKUP_ROOT}/${STAMP}"
 mkdir -p "$DEST"
 
 copied=0
-for f in "$SETTINGS_FILE" "$DB_FILE" "$ENV_FILE"; do
+for f in "$SETTINGS_FILE" "$GOAL_SETTINGS_FILE" "$SPEAKING_TOPICS_FILE" "$DB_FILE" "$ENV_FILE"; do
   if [[ -f "$f" ]]; then
     cp "$f" "$DEST/"
     copied=$((copied + 1))

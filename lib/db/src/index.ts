@@ -1,6 +1,7 @@
 export { db, sqliteConnection } from "./connection";
 export * from "./schema";
 export * from "./app-settings";
+export * from "./goal-settings";
 export * from "./category-queries";
 export * from "./focus-workspace";
 export { initializeFocusWorkspaceSchema } from "./focus-workspace-migration";

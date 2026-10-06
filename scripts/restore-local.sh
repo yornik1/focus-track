@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Восстановление focus-app-settings.json, focus.db, .env из бэкапа.
+# Восстановление focus-app-settings.json, focus-goal.json, speaking-topics.txt, focus.db, .env из бэкапа.
 
 set -euo pipefail
 
@@ -38,6 +38,8 @@ restore_file() {
 
 echo "Восстановление из: $SRC"
 restore_file "focus-app-settings.json"
+restore_file "focus-goal.json"
+restore_file "speaking-topics.txt"
 restore_file "focus.db"
 restore_file ".env"
 echo "Готово."

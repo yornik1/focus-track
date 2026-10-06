@@ -10,6 +10,8 @@ CAPTURE_APP="${REPO_ROOT}/mac/Focus Capture.app"
 # Актуальный путь (после prepare_capture_binary предпочитает .app)
 CAPTURE_BIN="${REPO_ROOT}/mac/bin/focus-capture"
 SETTINGS_FILE="${REPO_ROOT}/focus-app-settings.json"
+GOAL_SETTINGS_FILE="${REPO_ROOT}/focus-goal.json"
+SPEAKING_TOPICS_FILE="${REPO_ROOT}/speaking-topics.txt"
 DB_FILE="${REPO_ROOT}/focus.db"
 ENV_FILE="${REPO_ROOT}/.env"
 
