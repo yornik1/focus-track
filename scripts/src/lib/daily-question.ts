@@ -23,6 +23,8 @@ export const QUESTION_TYPES: readonly string[] = [
 /** Сколько описаний уходит в запрос; меньше годных — ИИ не вызывается. */
 const SUMMARY_COUNT = 5;
 const MAX_QUESTION_LENGTH = 200;
+/** Предел для пояснения и продолжений: длиннее — Telegram может отвергнуть всё сообщение. */
+const MAX_FIELD_LENGTH = 200;
 
 /** Устойчивый хэш строки (FNV-1a с перемешиванием битов): одинаков между запусками и машинами. */
 function hashString(text: string): number {
@@ -110,16 +112,42 @@ export function parseQuestionResponse(text: string): Omit<DailyQuestion, "source
   const question = typeof record.question === "string" ? record.question.trim() : "";
   if (!question || question.length > MAX_QUESTION_LENGTH) return null;
 
-  const why = typeof record.why === "string" ? record.why.trim() : "";
-  if (!why) return null;
+  const rawWhy = typeof record.why === "string" ? record.why.trim() : "";
+  if (!rawWhy) return null;
+  // Пояснение нужно по-русски и коротким. Иначе вопрос остаётся, а строка в сообщение не идёт.
+  const why = /[а-яё]/i.test(rawWhy) && rawWhy.length <= MAX_FIELD_LENGTH ? rawWhy : "";
 
   if (!Array.isArray(record.followups)) return null;
   const followups = (record.followups as unknown[])
     .map((item) => (typeof item === "string" ? item.trim() : ""))
     .filter(Boolean);
   if (followups.length < 2) return null;
+  const firstTwo = followups.slice(0, 2);
+  if (firstTwo.some((item) => item.length > MAX_FIELD_LENGTH)) return null;
 
-  return { question, why, followups: followups.slice(0, 2) };
+  return { question, why, followups: firstTwo };
+}
+
+/**
+ * Читает вопрос, сохранённый программой в `question-<дата>.txt`. Мягче разбора ответа ИИ:
+ * пояснение может быть пустым — его могли убрать при первом разборе.
+ */
+export function parseSavedQuestion(text: string): Omit<DailyQuestion, "source"> | null {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    return null;
+  }
+  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) return null;
+  const record = parsed as Record<string, unknown>;
+  const question = typeof record.question === "string" ? record.question.trim() : "";
+  if (!question) return null;
+  const why = typeof record.why === "string" ? record.why.trim() : "";
+  const followups = Array.isArray(record.followups)
+    ? (record.followups as unknown[]).filter((item): item is string => typeof item === "string" && item.trim() !== "")
+    : [];
+  return { question, why, followups };
 }
 
 /** Строки файла запасных вопросов: по одному в строке, пустые и с `#` пропускаются. */

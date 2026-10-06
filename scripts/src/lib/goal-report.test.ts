@@ -16,6 +16,7 @@ import {
   kievMidnight,
   lastFinishedWeek,
   renderStreakDays,
+  resolveHabits,
   reviewText,
   streakEventText,
   streakLine,
@@ -116,7 +117,6 @@ test("isBusy: рабочая категория с оценкой ниже по�
 });
 
 const SETTINGS: ReportSettings = {
-  firstAction: "английский вслух с ИИ",
   nudgeHour: 14,
   minScreenshots: 5,
   hasQuestionHabit: true,
@@ -569,4 +569,23 @@ test("dailyText: начало «Серия N ждёт» есть в круге �
 test("renderStreakDays: # — непустой день, . — пустой", () => {
   assert.equal(renderStreakDays([true, true, false, true]), "##.#");
   assert.equal(renderStreakDays([]), "");
+});
+
+// ---------- привычки из настроек против активных в базе ----------
+
+test("resolveHabits: все привычки из списка неактивны → null (файл негоден)", () => {
+  assert.equal(resolveHabits(["walk", "anki"], "talk", new Set(["talk"])), null);
+  assert.equal(resolveHabits(["walk"], undefined, new Set()), null);
+});
+
+test("resolveHabits: неактивная привычка из списка пропускается, порядок остальных сохраняется", () => {
+  assert.deepEqual(resolveHabits(["walk", "old", "anki"], "talk", new Set(["walk", "anki", "talk"])), {
+    stepIds: ["walk", "anki"],
+    questionId: "talk",
+  });
+});
+
+test("resolveHabits: привычка с вопросом неактивна или не задана → questionId нет", () => {
+  assert.deepEqual(resolveHabits(["walk"], "talk", new Set(["walk"])), { stepIds: ["walk"], questionId: undefined });
+  assert.deepEqual(resolveHabits(["walk"], undefined, new Set(["walk"])), { stepIds: ["walk"], questionId: undefined });
 });

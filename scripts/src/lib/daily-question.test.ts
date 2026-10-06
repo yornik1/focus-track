@@ -5,6 +5,7 @@ import {
   buildQuestionPrompt,
   fallbackQuestion,
   parseQuestionResponse,
+  parseSavedQuestion,
   parseTopicsFile,
   pickByDate,
   pickSummaries,
@@ -133,6 +134,33 @@ test("fallbackQuestion: тема по дате без пояснений; пус
   assert.deepEqual(FALLBACK, { question: FALLBACK.question, why: "", followups: [], source: "fallback" });
   assert.deepEqual(fallbackQuestion(TOPICS, DATE), FALLBACK);
   assert.equal(fallbackQuestion([], DATE), null);
+});
+
+test("parseQuestionResponse: «с чем связан» не по-русски или слишком длинное — вопрос остаётся, строка убирается", () => {
+  const answer = (why: string): string =>
+    JSON.stringify({ question: "Is remote work better?", why, followups: ["Why?", "For whom?"] });
+  assert.equal(parseQuestionResponse(answer("Связано с поиском работы."))?.why, "Связано с поиском работы.");
+  // Модель проигнорировала язык: вопрос годный, а пояснение по-английски в сообщение не идёт.
+  assert.deepEqual(parseQuestionResponse(answer("It is connected to job search.")), {
+    question: "Is remote work better?",
+    why: "",
+    followups: ["Why?", "For whom?"],
+  });
+  assert.equal(parseQuestionResponse(answer("Связано с " + "поиском ".repeat(40)))?.why, "");
+});
+
+test("parseQuestionResponse: продолжение длиннее 200 знаков — ответ негоден", () => {
+  const long = "Why ".repeat(60);
+  const text = JSON.stringify({ question: "Is remote work better?", why: "Про работу.", followups: [long, "For whom?"] });
+  assert.equal(parseQuestionResponse(text), null);
+});
+
+test("parseSavedQuestion: читает сохранённый вопрос, в том числе с пустым пояснением", () => {
+  const saved = JSON.stringify({ question: "Is remote work better?", why: "", followups: ["Why?", "For whom?"], source: "llm" });
+  assert.deepEqual(parseSavedQuestion(saved), { question: "Is remote work better?", why: "", followups: ["Why?", "For whom?"] });
+  assert.equal(parseSavedQuestion("not json"), null);
+  assert.equal(parseSavedQuestion(JSON.stringify({ why: "x", followups: [] })), null);
+  assert.equal(parseSavedQuestion("[]"), null);
 });
 
 test("buildQuestionPrompt: строка «с чем связан» явно запрошена на русском", () => {

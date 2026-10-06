@@ -24,7 +24,7 @@ import {
 } from "@workspace/db";
 import { type StreakState, addDays, computeStreak, isDeepWorkCategory, streakDays } from "@workspace/categories";
 import { generateGeminiText } from "@workspace/llm";
-import { type DailyQuestion, parseQuestionResponse, parseTopicsFile, resolveDailyQuestion } from "./lib/daily-question";
+import { type DailyQuestion, parseSavedQuestion, parseTopicsFile, resolveDailyQuestion } from "./lib/daily-question";
 import {
   BUSY_SHOT_COUNT,
   BUSY_WINDOW_SECONDS,
@@ -40,6 +40,7 @@ import {
   kievMidnight,
   lastFinishedWeek,
   renderStreakDays,
+  resolveHabits,
   reviewText,
   streakEventText,
   streakLine,
@@ -49,7 +50,8 @@ import {
 
 /** За сколько часов назад берутся описания снимков для вопроса дня. */
 const QUESTION_WINDOW_SECONDS = 48 * 3600;
-const GEMINI_TIMEOUT_MS = 15_000;
+/** Скрипт стоит внутри цикла снимков: зависший запуск не должен держать цикл. */
+const WATCHDOG_MS = 45_000;
 
 /** «Сейчас» в unix-секундах: `--as-of` читается как местное время машины (она живёт в Europe/Kiev). */
 function parseAsOf(argv: readonly string[]): number {
@@ -138,19 +140,21 @@ function collectWeek(input: {
 /**
  * Вопрос дня: готовый из файла рядом с метками, иначе — новый (ИИ или запасной).
  * В файл попадает только ответ ИИ, чтобы пробный и настоящий запуск дали один текст и Gemini не вызывался дважды.
+ * С `--as-of` файл не пишется: пробный запуск на чужую дату не должен подкладывать ей вопрос.
  */
 async function questionOfDay(input: {
   dateKey: string;
   now: number;
   markersDir: string;
   noLlm: boolean;
+  saveAnswer: boolean;
   app: AppSettings;
 }): Promise<DailyQuestion | null> {
   const { app } = input;
   const cachePath = path.join(input.markersDir, `question-${input.dateKey}.txt`);
   // С --no-llm готовый вопрос от ИИ не читаем: ключ нужен, чтобы увидеть именно запасной.
   if (!input.noLlm && existsSync(cachePath)) {
-    const cached = parseQuestionResponse(readFileSync(cachePath, "utf8"));
+    const cached = parseSavedQuestion(readFileSync(cachePath, "utf8"));
     if (cached) return { ...cached, source: "llm" };
   }
 
@@ -177,10 +181,10 @@ async function questionOfDay(input: {
     topics,
     provider: app.provider,
     noLlm: input.noLlm,
-    generate: (prompt) => generateGeminiText({ apiKeys, model: app.model, prompt, timeoutMs: GEMINI_TIMEOUT_MS }),
+    generate: (prompt) => generateGeminiText({ apiKeys, model: app.model, prompt }),
   });
 
-  if (question?.source === "llm") {
+  if (question?.source === "llm" && input.saveAnswer) {
     try {
       mkdirSync(input.markersDir, { recursive: true });
       writeFileSync(cachePath, JSON.stringify(question), "utf8");
@@ -207,14 +211,12 @@ async function main(): Promise<void> {
   const settings = goal.settings;
 
   const active = activeHabits([...settings.step_habit_ids, ...(settings.question_habit_id ? [settings.question_habit_id] : [])]);
-  const stepIds = settings.step_habit_ids.filter((id) => active.has(id));
-  if (stepIds.length === 0) {
+  const habits = resolveHabits(settings.step_habit_ids, settings.question_habit_id, active);
+  if (!habits) {
     console.error("goal-report: no active habit from step_habit_ids");
     return;
   }
-  // Привычка с вопросом неактивна — ведём себя так, будто её не задавали.
-  const questionId =
-    settings.question_habit_id !== undefined && active.has(settings.question_habit_id) ? settings.question_habit_id : undefined;
+  const { stepIds, questionId } = habits;
 
   const app = readAppSettings() ?? getDefaultAppSettings();
   const now = parseAsOf(argv);
@@ -262,7 +264,6 @@ async function main(): Promise<void> {
   const decision = decideReport({
     clock,
     settings: {
-      firstAction: settings.first_action,
       nudgeHour: settings.nudge_hour,
       minScreenshots: settings.min_screenshots,
       reviewDate: settings.review_date,
@@ -314,7 +315,7 @@ async function main(): Promise<void> {
     text = reviewText(review);
   } else if (decision.kind === "daily") {
     // Gemini вызывается только здесь — когда уже решено слать дневное сообщение.
-    const question = await questionOfDay({ dateKey: today, now, markersDir, noLlm, app });
+    const question = await questionOfDay({ dateKey: today, now, markersDir, noLlm, saveAnswer: !argv.includes("--as-of"), app });
     numbers.question = question;
     text = dailyText({
       dateKey: today,
@@ -332,6 +333,12 @@ async function main(): Promise<void> {
   }
   if (dryRun) console.error(JSON.stringify(numbers));
 }
+
+// Сторож: что бы ни зависло внутри, через 45 секунд процесс завершается; работе он не мешает (unref).
+setTimeout(() => {
+  console.error("goal-report: watchdog timeout");
+  process.exit(1);
+}, WATCHDOG_MS).unref();
 
 main().catch((err) => {
   console.error(`goal-report: ${err instanceof Error ? err.message : String(err)}`);

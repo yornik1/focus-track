@@ -79,12 +79,27 @@ export function isBusy(recent: readonly RecentShot[], nowEpoch: number, threshol
 }
 
 export interface ReportSettings {
-  firstAction: string;
   nudgeHour: number;
   minScreenshots: number;
   reviewDate?: string;
   /** Привычка с вопросом задана и активна. */
   hasQuestionHabit: boolean;
+}
+
+/**
+ * Привычки из настроек против активных в базе: неактивные пропускаются.
+ * Ни одной активной из списка шагов — null: файл настроек негоден.
+ */
+export function resolveHabits(
+  stepHabitIds: readonly string[],
+  questionHabitId: string | undefined,
+  active: ReadonlySet<string>,
+): { stepIds: string[]; questionId: string | undefined } | null {
+  const stepIds = stepHabitIds.filter((id) => active.has(id));
+  if (stepIds.length === 0) return null;
+  // Привычка с вопросом неактивна — ведём себя так, будто её не задавали.
+  const questionId = questionHabitId !== undefined && active.has(questionHabitId) ? questionHabitId : undefined;
+  return { stepIds, questionId };
 }
 
 export interface DailyFacts {

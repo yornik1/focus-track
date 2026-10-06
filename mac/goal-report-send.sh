@@ -32,8 +32,12 @@ if [[ -f "${PAUSE_FILE}" ]]; then
   fi
 fi
 
-/bin/mkdir -p "${MARKERS_DIR}" "$(dirname "${LOG_FILE}")"
+/bin/mkdir -p "${MARKERS_DIR}" "$(dirname "${LOG_FILE}")" 2>/dev/null || true
+# Метки не пишутся — выходим до отправки: иначе сообщение уходило бы на каждом проходе.
+[[ -d "${MARKERS_DIR}" && -w "${MARKERS_DIR}" ]] || exit 0
 today="$(/bin/date +%Y-%m-%d)"
+# Метки и штампы журнала старше 60 дней уже ни на что не влияют.
+/usr/bin/find "${MARKERS_DIR}" -type f -mtime +60 -delete 2>/dev/null || true
 
 # Пишет строку в журнал не чаще раза в день на каждый вид события.
 log_once() {
@@ -44,10 +48,23 @@ log_once() {
   : > "${stamp}"
 }
 
+# Без настроек Telegram слать некуда — выходим до запуска скрипта, чтобы не звать его и ИИ на каждом проходе.
+TG_BOT_TOKEN=""
+TG_CHAT_ID=""
+if [[ -f "${ENV_FILE}" ]]; then
+  TG_BOT_TOKEN="$(grep '^TG_BOT_TOKEN=' "${ENV_FILE}" 2>/dev/null | cut -d= -f2- | tr -d '"' | tr -d "'" || true)"
+  TG_CHAT_ID="$(grep '^TG_CHAT_ID=' "${ENV_FILE}" 2>/dev/null | cut -d= -f2- | tr -d '"' | tr -d "'" || true)"
+fi
+if [[ -z "${TG_BOT_TOKEN}" || -z "${TG_CHAT_ID}" ]]; then
+  log_once "no-telegram" "TG_BOT_TOKEN или TG_CHAT_ID не заданы в .env, сообщения не отправляются"
+  exit 0
+fi
+
 err_file="$(/usr/bin/mktemp -t goal-report-err)"
 trap 'rm -f "${err_file}"' EXIT
 
-if ! output="$(pnpm --silent --filter @workspace/scripts run goal-report "$@" 2>"${err_file}")"; then
+# Ключи скрипту не передаются: пробные запуски (--dry-run, --as-of) делаются напрямую, без отправки.
+if ! output="$(pnpm --silent --filter @workspace/scripts run goal-report 2>"${err_file}")"; then
   log_once "crash" "скрипт завершился с ошибкой: $(tail -1 "${err_file}" | head -c 200)"
   exit 0
 fi
@@ -74,17 +91,6 @@ fi
 # Только имя метки — «решено молчать»: ставим метку и не шлём.
 if [[ -z "${text//[[:space:]]/}" ]]; then
   : > "${MARKERS_DIR}/${marker}"
-  exit 0
-fi
-
-TG_BOT_TOKEN=""
-TG_CHAT_ID=""
-if [[ -f "${ENV_FILE}" ]]; then
-  TG_BOT_TOKEN="$(grep '^TG_BOT_TOKEN=' "${ENV_FILE}" 2>/dev/null | cut -d= -f2- | tr -d '"' | tr -d "'" || true)"
-  TG_CHAT_ID="$(grep '^TG_CHAT_ID=' "${ENV_FILE}" 2>/dev/null | cut -d= -f2- | tr -d '"' | tr -d "'" || true)"
-fi
-if [[ -z "${TG_BOT_TOKEN}" || -z "${TG_CHAT_ID}" ]]; then
-  log_once "no-telegram" "TG_BOT_TOKEN или TG_CHAT_ID не заданы в .env, сообщение не отправлено"
   exit 0
 fi
 
