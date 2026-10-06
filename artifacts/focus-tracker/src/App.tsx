@@ -15,7 +15,6 @@ type Tab = "today" | "week" | "habits" | "calendar" | "database" | "settings";
 
 const TABS: { id: Tab; label: string }[] = [
   { id: "today", label: "Today" },
-  { id: "week", label: "Week" },
   { id: "habits", label: "Habits" },
   { id: "calendar", label: "Calendar" },
   { id: "database", label: "Database" },
