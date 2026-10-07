@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { after, before, beforeEach, test } from "node:test";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import Database from "better-sqlite3";
@@ -68,6 +68,25 @@ test("feature flag hides commands while availability stays readable", async () =
     const availability = await fetch(`${base}/api/focus-workspace/availability`);
     assert.deepEqual(await availability.json(), { enabled: false });
     assert.equal((await fetch(`${base}/api/focus-workspace/state`)).status, 404);
+  } finally {
+    server.close();
+  }
+});
+
+test("POST /api/pause пишет файл паузы в корень проекта, а не в папку запуска", async () => {
+  const server = app.listen(0);
+  try {
+    const address = server.address();
+    assert.ok(address && typeof address === "object");
+    const startedAt = Math.floor(Date.now() / 1000);
+    const response = await fetch(`http://127.0.0.1:${address.port}/api/pause`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ duration: 15 }),
+    });
+    assert.equal(response.status, 200);
+    const pauseUntil = Number(readFileSync(path.join(tmpRoot, "data", "pause"), "utf8"));
+    assert.ok(pauseUntil >= startedAt + 900 && pauseUntil <= startedAt + 905);
   } finally {
     server.close();
   }

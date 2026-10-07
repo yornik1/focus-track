@@ -57,7 +57,8 @@ export const DEFAULT_PROMPT = `${ANALYSIS_PROMPT_HEADER}\n\n${buildCategoryPromp
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
-function resolveProjectRoot(): string {
+/** Корень проекта: `FOCUS_TRACK_ROOT`, иначе три уровня вверх от `lib/db/src`. */
+export function resolveProjectRoot(): string {
   if (process.env.FOCUS_TRACK_ROOT) return process.env.FOCUS_TRACK_ROOT;
   // lib/db/src/ → lib/db/ → lib/ → корень проекта
   return path.resolve(__dirname, "../../..");

@@ -15,6 +15,7 @@ import {
   medianActiveBest,
   FOCUS_FLOOR_MINUTES,
   focusWorkspaceEnabled,
+  resolveProjectRoot,
 } from "@workspace/db";
 import { eq, gte, lte, and, sql, desc } from "drizzle-orm";
 import { testLlmConnection } from "../llm-connection-test";
@@ -381,7 +382,8 @@ router.post("/pause", async (req, res) => {
     pauseUntil = Math.floor(Date.now() / 1000) + duration * 60;
   }
 
-  const dataDir = path.join(process.cwd(), "data");
+  // Корень проекта, а не папка запуска: служба стартует из artifacts/api-server, а захват читает <корень>/data/pause.
+  const dataDir = path.join(resolveProjectRoot(), "data");
   if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir, { recursive: true });
   const pauseFile = path.join(dataDir, "pause");
   fs.writeFileSync(pauseFile, String(pauseUntil));
