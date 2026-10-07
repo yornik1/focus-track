@@ -13,6 +13,8 @@ const app: Express = express();
 app.use(
   pinoHttp({
     logger,
+    // В журнал идут только ошибки: ответы 4xx/5xx и исключения. Успешные запросы не пишем.
+    customLogLevel: (_req, res, err) => (err || res.statusCode >= 500 ? "error" : res.statusCode >= 400 ? "warn" : "silent"),
     serializers: {
       req(req) {
         return {
